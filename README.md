@@ -4,7 +4,7 @@
 
 ## 版本与更新日志
 
-当前版本：`0.4.2`。完整版本历史与每个版本的具体改动见 [CHANGELOG.md](CHANGELOG.md)。发布新版本时，必须同步更新版本号、前端静态资源版本和更新日志。
+当前版本：`0.6.0`。完整版本历史与每个版本的具体改动见 [CHANGELOG.md](CHANGELOG.md)。发布新版本时，必须同步更新版本号、前端静态资源版本和更新日志。
 
 ## 核心特性
 
@@ -13,7 +13,7 @@
 - **用户管理**：管理员可创建、删除用户，调整角色，重置密码，并选择新用户的初始导航。
 - **导航编辑**：新增、编辑、删除、拖拽排序分组和入口。
 - **自定义分组模式**：每个分组可自定义名称、说明、Emoji/图标、任意十六进制颜色和顺序；独立“管理分组”面板无需进入编辑模式即可维护。
-- **浏览器书签导入**：导入 Chrome、Edge、Firefox 等浏览器导出的 HTML 书签，自动将文件夹转换为自定义分组，支持预览、去重和无效链接过滤。
+- **数据导入**：支持 Chrome、Edge、Firefox 的 HTML 书签，以及 Sun-Panel 导出的 `.sun-panel.json` 配置；自动转换分组、入口、内外网地址和图标，支持预览、去重和无效链接过滤。
 - **双地址切换**：公网与内网地址一键切换。
 - **搜索**：入口实时搜索，回退至 Bing、Google、百度、DuckDuckGo 或自定义搜索。
 - **图标**：文字、Emoji、图片 URL、本地图片上传。
@@ -21,6 +21,7 @@
 - **系统概览**：CPU、内存、磁盘和运行时间。
 - **个性化**：深浅主题、6 套背景、7 种强调色、3 种卡片风格。
 - **备份恢复**：管理员可导出/恢复全部用户、导航和设置。
+- **版本与更新中心**：查看当前版本、运行环境、完整更新记录，并从 GitLab/GitHub 等更新源检查新版本，提供 Node/Docker 升级步骤。
 - **轻量部署**：Node.js 单进程，无第三方运行时依赖，无外部数据库。
 
 ## 权限模型
@@ -76,31 +77,84 @@ npm test
 
 用户登录后会自动获得自己的导航空间。若用户没有任何分组，可使用“管理分组 → 新建自定义分组”开始整理。
 
-## 导入浏览器书签
+## 导入书签或 Sun-Panel 数据
 
 浏览器导出书签：
 
 - Chrome：打开 `chrome://bookmarks` → 右上角菜单 → 导出书签
 - Edge：打开 `edge://favorites` → 更多操作 → 导出收藏夹
 - Firefox：书签管理器 → 导入和备份 → 导出书签到 HTML
+- Sun-Panel：在系统设置中导出 `.sun-panel.json` 配置文件
 
 然后：
 
 1. 登录任意拥有编辑权限的账号。
-2. 点击“导入书签”。
-3. 选择书签 HTML 文件，或展开“粘贴书签 HTML”直接粘贴内容。
-4. 检查自动生成的分组和书签数量，可取消不需要的分组。
-5. 点击“导入 N 个书签”。
+2. 点击“导入数据”。
+3. 选择书签 HTML 或 Sun-Panel JSON 文件，也可以展开粘贴框直接粘贴内容。
+4. 检查自动生成的分组和入口数量，可取消不需要的分组。
+5. 点击“导入 N 个入口/书签”。
 
 导入规则：
 
-- 每个书签文件夹转换为一个自定义分组。
+- 每个书签文件夹或 Sun-Panel 分组转换为一个自定义分组。
 - 嵌套文件夹使用 `父级 / 子级` 作为分组名称。
 - “书签栏”“收藏夹”“其他书签”等浏览器根容器会被展开，不单独建组。
+- Sun-Panel 的分组排序和入口排序会保留，公网地址、内网地址、描述和打开方式会迁移。
+- Sun-Panel 图标通常是 `/uploads/...` 相对路径。填写“Sun-Panel 原始地址”后会转换为完整图标 URL；不填写时链接仍会完整导入，图标回退为文字。
 - 文件夹外的零散书签放入“导入的书签”分组。
 - 只接受 http/https 地址，无效链接和同批重复链接会自动跳过。
-- 单次最多导入 100 个分组、1500 个书签。
+- 单次最多导入 100 个分组、1500 个导航项。
 - 导入只影响当前登录账号的个人导航，不修改浏览器原数据。
+
+## 版本与更新
+
+管理员可在“系统设置 → 版本更新”查看：
+
+- 当前版本、运行环境、Node.js 版本和数据规模
+- 从 `CHANGELOG.md` 解析的完整版本记录
+- 当前部署方式的升级命令
+- 从远程更新源检查是否有新版本
+
+### 配置更新源
+
+更新源可以是 JSON 清单或 Markdown 更新日志。推荐直接指向仓库中的 `CHANGELOG.md` raw 地址：
+
+```env
+UPDATE_FEED_URL=https://gitlab.example.com/root/luma-nav/-/raw/main/CHANGELOG.md
+UPDATE_FEED_TOKEN=
+```
+
+私有 GitLab 仓库可通过 `UPDATE_FEED_TOKEN` 设置只读访问令牌。令牌仅保存在服务端，不会返回给浏览器。
+
+支持 JSON 清单：
+
+```json
+{
+  "version": "0.7.0",
+  "releasedAt": "2026-10-20",
+  "notes": ["新增更新源检查", "修复移动端布局"],
+  "releaseUrl": "https://gitlab.example.com/root/luma-nav/-/releases/v0.7.0"
+}
+```
+
+### 更新方式
+
+Node.js 直接运行：
+
+```bash
+git pull --ff-only
+npm test
+# 重启 node server.js
+```
+
+Docker：
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+更新前可在版本中心点击“更新前备份”。版本中心不会在运行中自动覆盖程序文件，避免更新中断导致服务不可用。
 
 ## Docker 部署
 
@@ -128,6 +182,8 @@ docker compose up -d --build
 | `ADMIN_PASSWORD` | `admin123` | 首次初始化管理员密码 |
 | `SESSION_SECRET` | 自动生成 | 会话令牌签名密钥 |
 | `COOKIE_SECURE` | 未设置 | HTTPS 部署时设为 `1` |
+| `UPDATE_FEED_URL` | 未设置 | 更新检查源，支持 Markdown 更新日志或 JSON 清单 |
+| `UPDATE_FEED_TOKEN` | 未设置 | 私有 GitLab 更新源访问令牌 |
 
 ## 数据结构
 
@@ -157,7 +213,10 @@ docker compose up -d --build
 | `POST/PUT/DELETE` | `/api/items...` | 登录用户，仅操作自己的入口 |
 | `PUT` | `/api/settings` | 管理员 |
 | `GET` | `/api/system` | 登录用户 |
-| `POST` | `/api/import/bookmarks` | 登录用户，批量导入自己的书签 |
+| `GET` | `/api/update` | 管理员，查看版本、更新日志和部署信息 |
+| `POST` | `/api/update/check` | 管理员，检查远程更新源 |
+| `POST` | `/api/import/navigation` | 登录用户，批量导入书签或 Sun-Panel 数据 |
+| `POST` | `/api/import/bookmarks` | 兼容旧路径，功能同上 |
 | `POST` | `/api/upload` | 登录用户 |
 | `GET` | `/api/backup` | 管理员 |
 | `POST` | `/api/restore` | 管理员 |
@@ -195,6 +254,7 @@ docker compose up -d --build
 ## License
 
 MIT
+
 
 
 

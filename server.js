@@ -15,10 +15,13 @@ const DB_FILE = path.join(DATA_DIR, 'db.json');
 const SECRET_FILE = path.join(DATA_DIR, '.session-secret');
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 3002);
-const VERSION = '0.4.2';
+const VERSION = '0.6.0';
 const MAX_BODY = 2 * 1024 * 1024;
 const SESSION_MAX_AGE = 7 * 24 * 60 * 60;
 const COOKIE_SECURE = process.env.COOKIE_SECURE === '1';
+const UPDATE_FEED_URL = String(process.env.UPDATE_FEED_URL || '').trim();
+const UPDATE_FEED_TOKEN = String(process.env.UPDATE_FEED_TOKEN || '').trim();
+const CHANGELOG_FILE = path.join(ROOT, 'CHANGELOG.md');
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -275,6 +278,165 @@ function getSession(req) {
   const user = db.users.find((entry) => entry.id === session.userId);
   if (!user) return null;
   return { token, session, user };
+}
+
+function parseVersion(value) {
+  const match = String(value || '').trim().replace(/^v/i, '').match(/^(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/);
+  return match ? match.slice(1, 4).map(Number) : null;
+}
+
+function compareVersions(left, right) {
+  const a = parseVersion(left);
+  const b = parseVersion(right);
+  if (!a || !b) return 0;
+  for (let index = 0; index < 3; index += 1) {
+    if (a[index] !== b[index]) return a[index] > b[index] ? 1 : -1;
+  }
+  return 0;
+}
+
+function parseChangelogMarkdown(markdown) {
+  const text = String(markdown || '');
+  const headingPattern = /^##\s+\[?v?(\d+\.\d+\.\d+)\]?(?:\s*-\s*(\d{4}-\d{2}-\d{2}))?.*$/gm;
+  const matches = [...text.matchAll(headingPattern)];
+  const entries = [];
+  for (let index = 0; index < matches.length; index += 1) {
+    const match = matches[index];
+    const start = match.index + match[0].length;
+    const end = index + 1 < matches.length ? matches[index + 1].index : text.length;
+    const body = text.slice(start, end);
+    const sections = [];
+    const sectionPattern = /^###\s+(.+)$/gm;
+    const sectionMatches = [...body.matchAll(sectionPattern)];
+    for (let sectionIndex = 0; sectionIndex < sectionMatches.length; sectionIndex += 1) {
+      const sectionMatch = sectionMatches[sectionIndex];
+      const sectionStart = sectionMatch.index + sectionMatch[0].length;
+      const sectionEnd = sectionIndex + 1 < sectionMatches.length ? sectionMatches[sectionIndex + 1].index : body.length;
+      const items = body.slice(sectionStart, sectionEnd)
+        .split(/\r?\n/)
+        .map((line) => line.match(/^\s*-\s+(.+)$/)?.[1]?.trim())
+        .filter(Boolean)
+        .map((line) => line.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1').replace(/\*\*/g, '').replace(/`/g, ''));
+      if (items.length) sections.push({ title: sectionMatch[1].trim(), items });
+    }
+    entries.push({ version: match[1], date: match[2] || '', sections });
+  }
+  return entries;
+}
+
+async function readChangelog() {
+  try {
+    return parseChangelogMarkdown(await fsp.readFile(CHANGELOG_FILE, 'utf8'));
+  } catch {
+    return [];
+  }
+}
+
+function isDockerRuntime() {
+  return process.env.DOCKER_CONTAINER === '1' || fs.existsSync('/.dockerenv');
+}
+
+function deploymentInfo() {
+  const docker = isDockerRuntime();
+  return {
+    mode: docker ? 'docker' : 'node',
+    label: docker ? 'Docker 容器' : 'Node.js 直接运行',
+    node: process.version,
+    platform: `${os.platform()} ${os.arch()}`,
+    dataDir: DATA_DIR,
+    updateCommands: docker
+      ? ['docker compose pull', 'docker compose up -d']
+      : ['git pull --ff-only', 'npm test', '重启 node server.js'],
+    note: docker
+      ? '更新镜像后重新创建容器，data 和 uploads 目录会保留。'
+      : '拉取代码并运行测试后重启服务；建议先导出备份。'
+  };
+}
+
+function parseUpdateFeed(text, sourceUrl = '') {
+  const trimmed = String(text || '').trim();
+  if (!trimmed) throw new Error('更新源返回内容为空');
+  let version = '';
+  let releasedAt = '';
+  let notes = [];
+  let releaseUrl = sourceUrl;
+  if (trimmed.startsWith('{')) {
+    let data;
+    try {
+      data = JSON.parse(trimmed);
+    } catch {
+      throw new Error('更新源 JSON 格式无效');
+    }
+    version = String(data.version || data.latestVersion || data.tag_name || data.name || '').replace(/^v/i, '').trim();
+    releasedAt = String(data.releasedAt || data.released_at || data.created_at || data.published_at || '').slice(0, 40);
+    const rawNotes = data.notes ?? data.releaseNotes ?? data.release_notes ?? data.description ?? '';
+    notes = Array.isArray(rawNotes) ? rawNotes.map((note) => String(note).trim()).filter(Boolean) : String(rawNotes).split(/\r?\n/).map((note) => note.replace(/^[-*]\s*/, '').trim()).filter(Boolean);
+    releaseUrl = String(data.releaseUrl || data.release_url || data.web_url || data.url || sourceUrl);
+  } else {
+    const entries = parseChangelogMarkdown(trimmed);
+    if (!entries.length) throw new Error('更新源中没有找到版本记录');
+    const latest = entries[0];
+    version = latest.version;
+    releasedAt = latest.date;
+    notes = latest.sections.flatMap((section) => section.items);
+  }
+  if (!parseVersion(version)) throw new Error('更新源没有返回有效的语义化版本号');
+  return { version, releasedAt, notes, releaseUrl };
+}
+
+let updateCheckState = {
+  checkedAt: null,
+  latestVersion: null,
+  updateAvailable: false,
+  releaseUrl: '',
+  notes: [],
+  releasedAt: '',
+  error: ''
+};
+let updateCheckPromise = null;
+let updateCheckAt = 0;
+
+async function performUpdateCheck(force = false) {
+  if (!UPDATE_FEED_URL) throw new Error('尚未配置更新源，请设置 UPDATE_FEED_URL');
+  let feedUrl;
+  try {
+    feedUrl = new URL(UPDATE_FEED_URL);
+  } catch {
+    throw new Error('UPDATE_FEED_URL 不是有效地址');
+  }
+  if (feedUrl.protocol !== 'https:' && feedUrl.protocol !== 'http:') throw new Error('更新源只支持 HTTP/HTTPS');
+  if (!force && updateCheckState.checkedAt && Date.now() - updateCheckAt < 5 * 60 * 1000) return updateCheckState;
+  if (updateCheckPromise) return updateCheckPromise;
+  updateCheckPromise = (async () => {
+    const headers = { Accept: 'application/json, text/markdown, text/plain;q=0.9, */*;q=0.1' };
+    if (UPDATE_FEED_TOKEN) headers['PRIVATE-TOKEN'] = UPDATE_FEED_TOKEN;
+    const response = await fetch(feedUrl, { headers, signal: AbortSignal.timeout(8000), redirect: 'follow' });
+    if (!response.ok) throw new Error(`更新源请求失败 (HTTP ${response.status})`);
+    const length = Number(response.headers.get('content-length') || 0);
+    if (length > 512 * 1024) throw new Error('更新源内容超过 512KB');
+    const text = await response.text();
+    if (text.length > 512 * 1024) throw new Error('更新源内容超过 512KB');
+    const release = parseUpdateFeed(text, feedUrl.toString());
+    const latestVersion = release.version;
+    updateCheckState = {
+      checkedAt: isoNow(),
+      latestVersion,
+      updateAvailable: compareVersions(latestVersion, VERSION) > 0,
+      releaseUrl: release.releaseUrl || feedUrl.toString(),
+      notes: release.notes.slice(0, 30),
+      releasedAt: release.releasedAt,
+      error: ''
+    };
+    updateCheckAt = Date.now();
+    return updateCheckState;
+  })().catch((error) => {
+    updateCheckState = { ...updateCheckState, checkedAt: isoNow(), error: error.message };
+    updateCheckAt = Date.now();
+    throw error;
+  }).finally(() => {
+    updateCheckPromise = null;
+  });
+  return updateCheckPromise;
 }
 
 function sessionCookie(token, maxAge = SESSION_MAX_AGE) {
@@ -733,6 +895,45 @@ async function handleApi(req, res, url) {
     return send(res, 200, { ok: true, metrics: systemMetrics() });
   }
 
+  if (method === 'GET' && pathname === '/api/update') {
+    const admin = requireAdmin(req, res);
+    if (!admin) return;
+    const changelog = await readChangelog();
+    return send(res, 200, {
+      ok: true,
+      currentVersion: VERSION,
+      changelog,
+      deployment: deploymentInfo(),
+      feed: {
+        configured: Boolean(UPDATE_FEED_URL),
+        urlHost: (() => { try { return UPDATE_FEED_URL ? new URL(UPDATE_FEED_URL).host : ''; } catch { return ''; } })(),
+        tokenConfigured: Boolean(UPDATE_FEED_TOKEN)
+      },
+      lastCheck: updateCheckState,
+      counts: {
+        users: db.users.length,
+        groups: db.groups.length,
+        items: db.items.length
+      }
+    });
+  }
+
+  if (method === 'POST' && pathname === '/api/update/check') {
+    const admin = requireAdmin(req, res);
+    if (!admin) return;
+    try {
+      const result = await performUpdateCheck(true);
+      return send(res, 200, { ok: true, currentVersion: VERSION, ...result });
+    } catch (error) {
+      return send(res, 502, {
+        ok: false,
+        currentVersion: VERSION,
+        error: error.message,
+        lastCheck: updateCheckState
+      }, 'application/json; charset=utf-8');
+    }
+  }
+
   if (method === 'POST' && pathname === '/api/auth/login') {
     if (!sameOrigin(req)) return fail(res, 403, '来源校验失败', 'BAD_ORIGIN');
     const limit = checkLoginRate(req);
@@ -1070,18 +1271,17 @@ async function handleApi(req, res, url) {
     return send(res, 200, { ok: true, relogin: true });
   }
 
-  if (method === 'POST' && pathname === '/api/import/bookmarks') {
+  if (method === 'POST' && (pathname === '/api/import/navigation' || pathname === '/api/import/bookmarks')) {
     const user = requireUser(req, res);
     if (!user) return;
     const body = await readJson(req);
     const incomingGroups = Array.isArray(body.groups) ? body.groups : [];
-    if (!incomingGroups.length) return fail(res, 400, '没有可导入的书签分组');
+    if (!incomingGroups.length) return fail(res, 400, '没有可导入的导航分组');
     if (incomingGroups.length > 100) return fail(res, 400, '单次最多导入 100 个分组');
     const totalIncoming = incomingGroups.reduce((sum, group) => sum + (Array.isArray(group?.items) ? group.items.length : 0), 0);
-    if (totalIncoming > 1500) return fail(res, 400, '单次最多导入 1500 个书签');
+    if (totalIncoming > 1500) return fail(res, 400, '单次最多导入 1500 个导航项');
 
     const existingGroups = ownGroups(user);
-    const seen = new Set();
     const groupsToAdd = [];
     const itemsToAdd = [];
     let skipped = 0;
@@ -1094,11 +1294,14 @@ async function handleApi(req, res, url) {
         continue;
       }
       const validItems = [];
+      const seen = new Set();
       const rawItems = Array.isArray(sourceGroup?.items) ? sourceGroup.items : [];
       for (const sourceItem of rawItems) {
         const url = validUrl(sourceItem?.url, false);
+        const lanUrl = validUrl(sourceItem?.lanUrl ?? '', true);
+        const iconUrl = validIconUrl(sourceItem?.iconUrl ?? '');
         const title = cleanString(sourceItem?.title, 60);
-        if (!url || !title) {
+        if (!url || !title || lanUrl === null || iconUrl === null) {
           skipped += 1;
           continue;
         }
@@ -1121,9 +1324,9 @@ async function handleApi(req, res, url) {
           url,
           description: cleanString(sourceItem?.description, 120),
           icon: cleanString(sourceItem?.icon, 12),
-          iconUrl: '',
-          lanUrl: '',
-          openMode: 'tab'
+          iconUrl,
+          lanUrl,
+          openMode: sourceItem?.openMode === 'window' ? 'window' : 'tab'
         });
       }
       if (!validItems.length) continue;
@@ -1132,7 +1335,7 @@ async function handleApi(req, res, url) {
         id: groupId,
         ownerId: user.id,
         name,
-        description: cleanString(sourceGroup?.description || '从浏览器书签导入', 100),
+        description: cleanString(sourceGroup?.description || '从外部数据导入', 100),
         color: validColor(sourceGroup?.color),
         icon: validGroupIcon(sourceGroup?.icon || '📁'),
         order: order,
@@ -1151,7 +1354,7 @@ async function handleApi(req, res, url) {
       });
     }
 
-    if (!groupsToAdd.length) return fail(res, 400, '没有找到可导入的有效书签');
+    if (!groupsToAdd.length) return fail(res, 400, '没有找到可导入的有效导航项');
     db.groups.push(...groupsToAdd);
     db.items.push(...itemsToAdd);
     db.updatedAt = isoNow();
@@ -1224,6 +1427,10 @@ function start() {
 if (require.main === module) start();
 
 module.exports = { start, requestHandler, hashPassword, verifyPassword, normalizeDatabase };
+
+
+
+
 
 
 

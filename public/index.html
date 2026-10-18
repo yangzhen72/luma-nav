@@ -8,8 +8,8 @@
   <title>Luma Nav · 个人数字入口</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="manifest" href="/manifest.webmanifest">
-  <link rel="stylesheet" href="/styles.css?v=0.4.2">
-  <script src="/app.js?v=0.4.2" defer></script>
+  <link rel="stylesheet" href="/styles.css?v=0.6.0">
+  <script src="/app.js?v=0.6.0" defer></script>
 </head>
 <body data-theme="dark" data-wallpaper="aurora" data-accent="amber" data-card-style="glass">
   <a class="skip-link" href="#mainContent">跳到主要内容</a>
@@ -38,7 +38,7 @@
         <button class="side-action" id="settingsButton" type="button" hidden><span class="icon-box" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 15.2A3.2 3.2 0 1 0 12 8.8a3.2 3.2 0 0 0 0 6.4Z" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M19.1 13.3c.1-.4.1-.9.1-1.3s0-.9-.1-1.3l2-1.5-2-3.4-2.4 1a8 8 0 0 0-2.2-1.3L14.2 3h-4.4l-.3 2.5a8 8 0 0 0-2.2 1.3l-2.4-1-2 3.4 2 1.5c-.1.4-.1.9-.1 1.3s0 .9.1 1.3l-2 1.5 2 3.4 2.4-1a8 8 0 0 0 2.2 1.3l.3 2.5h4.4l.3-2.5a8 8 0 0 0 2.2-1.3l2.4 1 2-3.4-2-1.5Z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span><span>系统设置</span></button>
         <button class="side-action danger-hover" id="logoutButton" type="button" hidden><span class="icon-box" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M10 5H5v14h5M14 8l4 4-4 4m4-4H9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span>退出登录</span></button>
       </div>
-      <p class="sidebar-version">v<span id="versionLabel">0.1.0</span> · 自托管</p>
+      <button class="sidebar-version" id="versionButton" type="button" title="版本与更新">v<span id="versionLabel">0.1.0</span> · 自托管</button>
     </aside>
 
     <main class="main" id="mainContent">
@@ -82,7 +82,7 @@
 
       <section class="content-head">
         <div><p class="section-kicker">YOUR SPACES</p><h2>我的导航</h2></div>
-        <div class="content-actions"><span class="item-count" id="itemCount">0 个入口</span><button class="button button-quiet" id="importBookmarksButton" type="button" hidden>导入书签</button><button class="button button-quiet" id="manageGroupsButton" type="button" hidden>管理分组</button><button class="button button-quiet" id="addGroupButton" type="button" hidden>新建分组</button></div>
+        <div class="content-actions"><span class="item-count" id="itemCount">0 个入口</span><button class="button button-quiet" id="importBookmarksButton" type="button" hidden>导入数据</button><button class="button button-quiet" id="manageGroupsButton" type="button" hidden>管理分组</button><button class="button button-quiet" id="addGroupButton" type="button" hidden>新建分组</button></div>
       </section>
 
       <section class="groups" id="groupsRoot" aria-live="polite"></section>
@@ -114,23 +114,24 @@
 
   <dialog class="modal" id="bookmarkImportDialog">
     <div class="modal-panel">
-      <div class="modal-head"><div><p class="section-kicker">BOOKMARK IMPORT</p><h2>导入浏览器书签</h2></div><button class="icon-button modal-close" type="button" data-close-dialog="bookmarkImportDialog" aria-label="关闭">×</button></div>
-      <p class="form-hint settings-note">支持 Chrome、Edge、Firefox 等浏览器导出的 HTML 书签。文件夹会自动转换为自定义分组，原浏览器数据不会被修改。</p>
+      <div class="modal-head"><div><p class="section-kicker">DATA IMPORT</p><h2>导入书签或 Sun-Panel</h2></div><button class="icon-button modal-close" type="button" data-close-dialog="bookmarkImportDialog" aria-label="关闭">×</button></div>
+      <p class="form-hint settings-note">支持 Chrome、Edge、Firefox 导出的 HTML 书签，以及 Sun-Panel 导出的 <code>.sun-panel.json</code> 配置。导入只影响当前账号，不会修改原数据。</p>
       <label class="bookmark-drop" id="bookmarkDrop">
-        <input type="file" id="bookmarkFile" accept=".html,.htm,text/html" hidden>
+        <input type="file" id="bookmarkFile" accept=".html,.htm,.json,.sun-panel.json,text/html,application/json" hidden>
         <span class="bookmark-drop-icon" aria-hidden="true">⇩</span>
-        <span><b>选择书签 HTML 文件</b><small>也可以把文件拖到这里</small></span>
+        <span><b>选择 HTML 书签或 Sun-Panel JSON</b><small>也可以把文件拖到这里</small></span>
       </label>
+      <label class="field sunpanel-base-field"><span>Sun-Panel 原始地址（可选，用于恢复图标）</span><input id="sunPanelBaseUrl" type="url" placeholder="例如 https://nav.example.com"></label>
       <details class="bookmark-paste">
-        <summary>没有文件？粘贴书签 HTML</summary>
-        <textarea id="bookmarkPaste" rows="6" placeholder="粘贴浏览器导出的书签 HTML 内容"></textarea>
+        <summary>没有文件？粘贴 HTML 或 Sun-Panel JSON</summary>
+        <textarea id="bookmarkPaste" rows="6" placeholder="粘贴浏览器书签 HTML，或 Sun-Panel 导出的 JSON 内容"></textarea>
         <button class="button button-quiet" type="button" id="parseBookmarkPasteButton">解析粘贴内容</button>
       </details>
       <p class="form-error" id="bookmarkImportError" role="alert"></p>
       <section class="bookmark-preview" id="bookmarkPreview" hidden>
         <div class="bookmark-preview-head"><span><b id="bookmarkSummary">0 个分组</b><small id="bookmarkSummaryDetail">0 个书签</small></span><label class="bookmark-select-all"><input type="checkbox" id="bookmarkSelectAll" checked> 全选</label></div>
         <div class="bookmark-group-list" id="bookmarkGroupList"></div>
-        <p class="form-hint">导入时会自动忽略无效链接，并对同一批书签去重。单个文件夹会转换为一个自定义分组。</p>
+        <p class="form-hint">导入时会自动忽略无效链接，并在分组内去重。书签文件夹或 Sun-Panel 分组会转换为自定义分组。</p>
       </section>
       <div class="modal-actions"><button class="button button-quiet" type="button" data-close-dialog="bookmarkImportDialog">取消</button><button class="button button-primary" type="button" id="importBookmarksConfirm" disabled>开始导入</button></div>
     </div>
@@ -166,7 +167,7 @@
       <div class="modal-head"><div><p class="section-kicker">CUSTOM GROUPS</p><h2>管理自定义分组</h2></div><button class="icon-button modal-close" type="button" data-close-dialog="groupsDialog" aria-label="关闭">×</button></div>
       <p class="form-hint settings-note">分组名称、说明、图标、颜色和顺序都由你自己定义。</p>
       <div class="group-manager-list" id="groupManagerList"></div>
-      <div class="modal-actions"><span class="action-spacer"></span><button class="button button-quiet" type="button" data-close-dialog="groupsDialog">关闭</button><button class="button button-quiet" type="button" id="managerImportBookmarksButton">导入书签</button><button class="button button-primary" type="button" id="managerAddGroupButton">新建自定义分组</button></div>
+      <div class="modal-actions"><span class="action-spacer"></span><button class="button button-quiet" type="button" data-close-dialog="groupsDialog">关闭</button><button class="button button-quiet" type="button" id="managerImportBookmarksButton">导入数据</button><button class="button button-primary" type="button" id="managerAddGroupButton">新建自定义分组</button></div>
     </div>
   </dialog>
 
@@ -188,13 +189,39 @@
     <form method="dialog" class="modal-panel" id="settingsForm">
       <div class="modal-head"><div><p class="section-kicker">CONTROL CENTER</p><h2>系统设置</h2></div><button class="icon-button modal-close" type="button" data-close-dialog="settingsDialog" aria-label="关闭">×</button></div>
       <div class="settings-layout">
-        <nav class="settings-tabs" aria-label="设置分类"><button type="button" class="active" data-settings-tab="general">基础信息</button><button type="button" data-settings-tab="appearance">外观</button><button type="button" data-settings-tab="features">功能</button><button type="button" data-settings-tab="security">安全与备份</button><button type="button" data-settings-tab="users">用户管理</button></nav>
+        <nav class="settings-tabs" aria-label="设置分类"><button type="button" class="active" data-settings-tab="general">基础信息</button><button type="button" data-settings-tab="appearance">外观</button><button type="button" data-settings-tab="features">功能</button><button type="button" data-settings-tab="security">安全与备份</button><button type="button" data-settings-tab="users">用户管理</button><button type="button" data-settings-tab="update">版本更新</button></nav>
         <div class="settings-content">
           <section class="settings-section active" data-settings-panel="general"><h3>基础信息</h3><div class="form-grid two-columns"><label class="field"><span>站点名称</span><input name="siteName" maxlength="40"></label><label class="field"><span>副标题</span><input name="siteSubtitle" maxlength="80"></label></div><label class="field"><span>欢迎语</span><input name="greeting" maxlength="80"></label><label class="field"><span>页脚文字</span><input name="footerText" maxlength="120"></label></section>
           <section class="settings-section" data-settings-panel="appearance"><h3>外观</h3><div class="form-grid two-columns"><label class="field"><span>默认主题</span><select name="themeDefault"><option value="dark">深色</option><option value="light">浅色</option><option value="system">跟随系统</option></select></label><label class="field"><span>默认背景</span><select name="wallpaper"><option value="aurora">极光</option><option value="ocean">深海</option><option value="sunset">暮色</option><option value="forest">森林</option><option value="graphite">石墨</option><option value="paper">纸张</option></select></label><label class="field"><span>强调色</span><select name="accent"><option value="amber">琥珀</option><option value="blue">星蓝</option><option value="cyan">青色</option><option value="green">青绿</option><option value="violet">紫罗兰</option><option value="rose">玫瑰</option><option value="slate">岩灰</option></select></label><label class="field"><span>卡片风格</span><select name="cardStyle"><option value="glass">玻璃</option><option value="solid">实色</option><option value="outline">描边</option></select></label></div></section>
           <section class="settings-section" data-settings-panel="features"><h3>功能</h3><div class="form-grid two-columns"><label class="field"><span>默认搜索引擎</span><select name="searchEngine"><option value="bing">Bing</option><option value="google">Google</option><option value="baidu">百度</option><option value="duckduckgo">DuckDuckGo</option><option value="custom">自定义</option></select></label><label class="field"><span>自定义搜索地址</span><input name="customSearchUrl" placeholder="https://example.com/search?q={q}"></label></div><div class="toggle-list"><label class="toggle-row"><span><b>显示时钟</b><small>在首页显示日期和时间</small></span><input type="checkbox" name="showClock"><i></i></label><label class="toggle-row"><span><b>公开系统状态</b><small>访客也能看到 CPU、内存和磁盘占用</small></span><input type="checkbox" name="showSystem"><i></i></label><label class="toggle-row"><span><b>默认使用内网地址</b><small>首次访问自动切换到内网链接</small></span><input type="checkbox" name="startInLanMode"><i></i></label><label class="toggle-row"><span><b>链接默认新标签打开</b><small>关闭后优先使用当前窗口</small></span><input type="checkbox" name="openInNewTab"><i></i></label></div></section>
-          <section class="settings-section" data-settings-panel="security"><h3>安全与备份</h3><p class="form-hint settings-note">导航中心始终要求登录。未登录时不会返回任何用户或导航数据。</p><div class="inline-actions"><button class="button button-quiet" type="button" id="exportButton">导出全部备份</button><label class="button button-quiet upload-button">导入备份<input type="file" id="restoreFile" accept="application/json" hidden></label></div><p class="form-hint">备份包含全部用户、导航和设置。恢复后所有账号需要重新登录。</p></section>
+          <section class="settings-section" data-settings-panel="security"><h3>安全与备份</h3><p class="form-hint settings-note">导航中心始终要求登录。未登录时不会返回任何用户或导航数据。</p><div class="inline-actions backup-actions"><button class="button button-quiet backup-button" type="button" id="exportButton">导出全部备份</button><label class="button button-quiet upload-button backup-button">导入备份<input type="file" id="restoreFile" accept="application/json" hidden></label></div><p class="form-hint">备份包含全部用户、导航和设置。恢复后所有账号需要重新登录。</p></section>
           <section class="settings-section" data-settings-panel="users"><h3>用户与个人导航</h3><p class="form-hint settings-note">每个账号拥有完全独立的导航数据。管理员可以创建账号，但不会自动看到或修改其他用户的导航。</p><div class="user-create-panel"><div class="form-grid two-columns"><label class="field"><span>用户名</span><input id="newUserUsername" maxlength="40" placeholder="例如 zhangsan"></label><label class="field"><span>显示名称</span><input id="newUserDisplayName" maxlength="60" placeholder="例如 张三"></label></div><div class="form-grid two-columns"><label class="field"><span>初始密码</span><input id="newUserPassword" type="password" autocomplete="new-password" placeholder="至少 8 位"></label><label class="field"><span>角色</span><select id="newUserRole"><option value="user">普通用户</option><option value="admin">管理员</option></select></label></div><label class="toggle-row standalone"><span><b>复制当前管理员的导航</b><small>创建后仍与原导航完全独立，后续修改互不影响</small></span><input type="checkbox" id="newUserCopy"><i></i></label><p class="form-error" id="userAdminError" role="alert"></p><button class="button button-primary" type="button" id="createUserButton">创建用户</button></div><div class="users-list" id="usersList"></div></section>
+          <section class="settings-section" data-settings-panel="update">
+            <h3>版本与更新</h3>
+            <div class="update-hero">
+              <div class="update-hero-icon" aria-hidden="true">↻</div>
+              <div class="update-hero-copy">
+                <span class="section-kicker">VERSION CENTER</span>
+                <strong>Luma Nav v<span id="updateCurrentVersion">-</span></strong>
+                <small id="updateCurrentHint">正在读取版本信息…</small>
+              </div>
+              <span class="update-badge" id="updateBadge">已是最新</span>
+            </div>
+            <div class="update-meta" id="updateMeta"></div>
+            <div class="update-check-row">
+              <button class="button button-primary" type="button" id="checkUpdateButton">检查更新</button>
+              <button class="button button-quiet" type="button" id="updateBackupButton">更新前备份</button>
+              <span class="form-hint" id="updateFeedHint">检查完成后可查看最新版本与更新步骤。</span>
+            </div>
+            <div class="update-result" id="updateResult" hidden></div>
+            <div class="settings-divider"></div>
+            <h4>更新步骤</h4>
+            <p class="form-hint settings-note" id="updateGuideNote">更新前建议先导出备份，更新完成后重启服务。</p>
+            <div class="update-command-box"><code id="updateCommands">-</code><button class="button button-quiet" type="button" id="copyUpdateCommands">复制命令</button></div>
+            <div class="settings-divider"></div>
+            <h4>版本记录</h4>
+            <div class="changelog-list" id="changelogList"><p class="form-hint">正在加载…</p></div>
+          </section>
         </div>
       </div>
       <p class="form-error" id="settingsError" role="alert"></p>
@@ -236,6 +263,10 @@
   <noscript><div class="noscript">请启用 JavaScript 以使用导航中心。</div></noscript>
 </body>
 </html>
+
+
+
+
 
 
 

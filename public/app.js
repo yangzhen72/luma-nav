@@ -42,7 +42,9 @@ const state = {
   searchIndex: -1,
   metricsTimer: null,
   clockTimer: null,
-  bookmarkImportGroups: []
+  updateInfo: null,
+  bookmarkImportGroups: [],
+  bookmarkImportKind: 'bookmarks'
 };
 
 function escapeHtml(value) {
@@ -207,6 +209,7 @@ function updateChrome() {
   $('#loginButton').hidden = currentUser;
   $('#accountButton').hidden = !currentUser;
   $('#settingsButton').hidden = !admin;
+  $('#versionButton').disabled = !admin;
   $('#logoutButton').hidden = !currentUser;
   $('#editButton').hidden = !canEdit;
   $('#addItemButton').hidden = !canEdit;
@@ -862,16 +865,139 @@ function bookmarkSafeName(value) {
 function bookmarkIconForName(name) {
   const text = String(name || '').toLowerCase();
   if (/收藏|favorite|star/.test(text)) return '⭐';
-  if (/工作|work|office|business/.test(text)) return '💼';
-  if (/开发|dev|code|github|gitlab|program/.test(text)) return '💻';
+  if (/工作|work|office|business|公司/.test(text)) return '💼';
+  if (/开发|dev|code|github|gitlab|program|技术/.test(text)) return '💻';
   if (/影视|电影|剧集|媒体|video|movie|music|audio/.test(text)) return '🎬';
-  if (/学习|阅读|read|book|study|doc/.test(text)) return '📚';
-  if (/工具|tool|utility/.test(text)) return '🧰';
+  if (/学习|阅读|read|book|study|doc|考试/.test(text)) return '📚';
+  if (/工具|tool|utility|it/.test(text)) return '🧰';
   if (/游戏|game|play/.test(text)) return '🎮';
   if (/购物|shop|buy/.test(text)) return '🛍';
   if (/社交|social|chat|friend/.test(text)) return '💬';
-  if (/其他|其它|other|misc/.test(text)) return '📂';
+  if (/ai|智能/.test(text)) return '🤖';
+  if (/设备|nas|server|服务器/.test(text)) return '🖥';
+  if (/求职|招聘|job/.test(text)) return '🧭';
+  if (/其他|其它|other|misc|个人/.test(text)) return '📂';
   return '📁';
+}
+
+function normalizeSunPanelBaseUrl(value) {
+  const text = String(value || '').trim();
+  if (!text) return '';
+  try {
+    const url = new URL(text);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+    return url.toString().replace(/\/+$/, '');
+  } catch {
+    return null;
+  }
+}
+
+function resolveSunPanelIcon(icon, baseUrl) {
+  const text = String(icon?.text || '').trim().slice(0, 12);
+  if (text) return { icon: text, iconUrl: '' };
+  const src = String(icon?.src || '').trim();
+  if (!src || src.startsWith('data:')) return { icon: '', iconUrl: '' };
+  try {
+    if (/^https?:\/\//i.test(src)) {
+      const url = new URL(src);
+      return { icon: '', iconUrl: url.toString() };
+    }
+    if (!baseUrl) return { icon: '', iconUrl: '' };
+    return { icon: '', iconUrl: new URL(src, `${baseUrl}/`).toString() };
+  } catch {
+    return { icon: '', iconUrl: '' };
+  }
+}
+
+function parseSunPanelJson(text, baseUrl = '') {
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    throw new Error('Sun-Panel 文件不是有效的 JSON');
+  }
+  if (!data || !Array.isArray(data.icons)) {
+    throw new Error('没有找到 Sun-Panel 配置中的 icons 分组');
+  }
+  const isSunPanel = String(data.appName || '').toLowerCase().includes('sun-panel');
+  if (!isSunPanel && !Array.isArray(data.icons)) {
+    throw new Error('不是可识别的 Sun-Panel 配置');
+  }
+  const groups = [];
+  let totalItems = 0;
+  let skipped = 0;
+
+  const sourceGroups = data.icons
+    .map((group, index) => ({ group, index }))
+    .sort((a, b) => (Number(a.group?.sort) || 0) - (Number(b.group?.sort) || 0) || a.index - b.index);
+
+  for (const { group: sourceGroup } of sourceGroups) {
+    const name = bookmarkSafeName(sourceGroup?.title);
+    if (!name) {
+      skipped += 1;
+      continue;
+    }
+    const items = [];
+    const seen = new Set();
+    const children = Array.isArray(sourceGroup?.children) ? sourceGroup.children : [];
+    const sortedChildren = children
+      .map((item, index) => ({ item, index }))
+      .sort((a, b) => (Number(a.item?.sort) || 0) - (Number(b.item?.sort) || 0) || a.index - b.index);
+
+    for (const { item: sourceItem } of sortedChildren) {
+      const title = String(sourceItem?.title || '').replace(/\s+/g, ' ').trim().slice(0, 60);
+      let url = '';
+      try {
+        const parsed = new URL(sourceItem?.url || '');
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') throw new Error('protocol');
+        url = parsed.toString();
+      } catch {
+        skipped += 1;
+        continue;
+      }
+      let lanUrl = '';
+      if (sourceItem?.lanUrl) {
+        try {
+          const parsed = new URL(sourceItem.lanUrl);
+          if (parsed.protocol === 'http:' || parsed.protocol === 'https:') lanUrl = parsed.toString();
+        } catch { /* leave blank */ }
+      }
+      let dedupeKey = url;
+      try {
+        const parsed = new URL(url);
+        parsed.hash = '';
+        dedupeKey = parsed.toString();
+      } catch { /* unreachable */ }
+      if (seen.has(dedupeKey)) {
+        skipped += 1;
+        continue;
+      }
+      seen.add(dedupeKey);
+      const icon = resolveSunPanelIcon(sourceItem?.icon, baseUrl);
+      items.push({
+        title: title || new URL(url).host.replace(/^www\./, ''),
+        url,
+        lanUrl,
+        icon: icon.icon,
+        iconUrl: icon.iconUrl,
+        description: String(sourceItem?.description || '').replace(/\s+/g, ' ').trim().slice(0, 120),
+        openMode: Number(sourceItem?.openMethod) === 3 ? 'window' : 'tab'
+      });
+    }
+
+    if (!items.length) continue;
+    groups.push({
+      name,
+      description: `从 Sun-Panel 导入 · ${items.length} 个入口`,
+      icon: bookmarkIconForName(name),
+      color: BOOKMARK_COLOR_CYCLE[groups.length % BOOKMARK_COLOR_CYCLE.length],
+      items
+    });
+    totalItems += items.length;
+  }
+
+  if (!groups.length) throw new Error('没有找到可导入的 Sun-Panel 入口');
+  return { groups, totalItems, skipped, kind: 'sunpanel' };
 }
 
 function parseBookmarkHtml(html) {
@@ -980,36 +1106,53 @@ function parseBookmarkHtml(html) {
   if (!validGroups.length) throw new Error('没有找到有效的 http/https 书签');
   if (validGroups.length > 100) throw new Error('书签分组超过 100 个，请先整理后再导入');
   if (totalItems > 1500) throw new Error('书签超过 1500 个，请分批导入');
-  return { groups: validGroups, totalItems, skipped };
+  return { groups: validGroups, totalItems, skipped, kind: 'bookmarks' };
+}
+
+function parseImportText(text, fileName = '') {
+  const trimmed = String(text || '').trim();
+  if (!trimmed) throw new Error('请选择文件或粘贴导入内容');
+  const jsonLike = /\.json$/i.test(fileName) || trimmed.startsWith('{');
+  if (jsonLike) {
+    const base = normalizeSunPanelBaseUrl($('#sunPanelBaseUrl').value);
+    if (base === null) throw new Error('Sun-Panel 原始地址必须是有效的 http/https URL');
+    if (base) setStored('luma-sunpanel-base', base);
+    return parseSunPanelJson(trimmed, base);
+  }
+  return parseBookmarkHtml(trimmed);
 }
 
 function openBookmarkImport() {
   if (!canEditNavigation()) return;
   if (document.getElementById('groupsDialog')?.open) closeDialog('groupsDialog');
   state.bookmarkImportGroups = [];
+  state.bookmarkImportKind = 'bookmarks';
   $('#bookmarkPreview').hidden = true;
   $('#bookmarkGroupList').innerHTML = '';
   $('#bookmarkImportError').textContent = '';
   $('#bookmarkPaste').value = '';
   $('#bookmarkFile').value = '';
+  $('#sunPanelBaseUrl').value = getStored('luma-sunpanel-base') || '';
   $('#importBookmarksConfirm').disabled = true;
   openDialog('bookmarkImportDialog');
 }
 
 function renderBookmarkPreview(parsed) {
   state.bookmarkImportGroups = parsed.groups;
+  state.bookmarkImportKind = parsed.kind || 'bookmarks';
+  const unit = parsed.kind === 'sunpanel' ? '入口' : '书签';
   const list = $('#bookmarkGroupList');
   list.innerHTML = parsed.groups.map((group, index) => {
     const color = groupColorHex(group.color);
     return `<label class="bookmark-group-row" style="--group-color:${escapeHtml(color)}">
       <input type="checkbox" data-bookmark-group="${index}" checked>
       <span class="bookmark-group-icon">${escapeHtml(group.icon || '📁')}</span>
-      <span class="bookmark-group-copy"><b>${escapeHtml(group.name)}</b><small>${escapeHtml(group.description)} · ${group.items.length} 个书签</small></span>
+      <span class="bookmark-group-copy"><b>${escapeHtml(group.name)}</b><small>${escapeHtml(group.description)} · ${group.items.length} 个${unit}</small></span>
       <span class="bookmark-group-count">${group.items.length}</span>
     </label>`;
   }).join('');
   $('#bookmarkSummary').textContent = `${parsed.groups.length} 个自定义分组`;
-  $('#bookmarkSummaryDetail').textContent = `${parsed.totalItems} 个有效书签${parsed.skipped ? ` · 已跳过 ${parsed.skipped} 个无效或重复项` : ''}`;
+  $('#bookmarkSummaryDetail').textContent = `${parsed.totalItems} 个有效${unit}${parsed.skipped ? ` · 已跳过 ${parsed.skipped} 个无效或重复项` : ''}`;
   $('#bookmarkPreview').hidden = false;
   $('#bookmarkSelectAll').checked = true;
   updateBookmarkImportSelection();
@@ -1019,10 +1162,11 @@ function updateBookmarkImportSelection() {
   const boxes = $$('[data-bookmark-group]');
   const selected = boxes.filter((box) => box.checked);
   const count = selected.reduce((sum, box) => sum + (state.bookmarkImportGroups[Number(box.dataset.bookmarkGroup)]?.items.length || 0), 0);
+  const unit = state.bookmarkImportKind === 'sunpanel' ? '入口' : '书签';
   $('#bookmarkSelectAll').checked = boxes.length > 0 && selected.length === boxes.length;
   $('#bookmarkSelectAll').indeterminate = selected.length > 0 && selected.length < boxes.length;
   $('#importBookmarksConfirm').disabled = selected.length === 0;
-  $('#importBookmarksConfirm').textContent = selected.length ? `导入 ${count} 个书签` : '请选择分组';
+  $('#importBookmarksConfirm').textContent = selected.length ? `导入 ${count} 个${unit}` : '请选择分组';
 }
 
 async function handleBookmarkFile(file) {
@@ -1030,8 +1174,8 @@ async function handleBookmarkFile(file) {
   const error = $('#bookmarkImportError');
   error.textContent = '';
   try {
-    if (file.size > 5 * 1024 * 1024) throw new Error('书签文件不能超过 5MB');
-    const parsed = parseBookmarkHtml(await file.text());
+    if (file.size > 5 * 1024 * 1024) throw new Error('导入文件不能超过 5MB');
+    const parsed = parseImportText(await file.text(), file.name);
     renderBookmarkPreview(parsed);
   } catch (err) {
     state.bookmarkImportGroups = [];
@@ -1044,9 +1188,7 @@ function parseBookmarkPaste() {
   const error = $('#bookmarkImportError');
   error.textContent = '';
   try {
-    const text = $('#bookmarkPaste').value.trim();
-    if (!text) throw new Error('请先粘贴书签 HTML');
-    renderBookmarkPreview(parseBookmarkHtml(text));
+    renderBookmarkPreview(parseImportText($('#bookmarkPaste').value));
   } catch (err) {
     state.bookmarkImportGroups = [];
     $('#bookmarkPreview').hidden = true;
@@ -1075,10 +1217,11 @@ async function confirmBookmarkImport() {
   const button = $('#importBookmarksConfirm');
   button.disabled = true;
   try {
-    const result = await api('/api/import/bookmarks', { method: 'POST', body: { groups: selected } });
+    const result = await api('/api/import/navigation', { method: 'POST', body: { groups: selected } });
+    const unit = state.bookmarkImportKind === 'sunpanel' ? '入口' : '书签';
     closeDialog('bookmarkImportDialog');
     await loadData({ silent: true });
-    toast(`已导入 ${result.importedItems} 个书签到 ${result.importedGroups} 个分组`);
+    toast(`已导入 ${result.importedItems} 个${unit}到 ${result.importedGroups} 个分组`);
   } catch (err) {
     error.textContent = err.message;
     button.disabled = false;
@@ -1139,6 +1282,134 @@ async function deleteItem(id) {
   }
 }
 
+function renderUpdateMeta(info) {
+  const deployment = info.deployment || {};
+  $('#updateMeta').innerHTML = `
+    <div class="update-meta-item"><span>运行环境</span><b>${escapeHtml(deployment.label || '-')}</b></div>
+    <div class="update-meta-item"><span>Node.js</span><b>${escapeHtml(deployment.node || '-')}</b></div>
+    <div class="update-meta-item"><span>数据规模</span><b>${info.counts?.users || 0} 用户 · ${info.counts?.groups || 0} 分组 · ${info.counts?.items || 0} 入口</b></div>`;
+  $('#updateGuideNote').textContent = deployment.note || '更新前建议先导出备份，更新完成后重启服务。';
+  $('#updateCommands').textContent = (deployment.updateCommands || []).join('\n') || '-';
+}
+
+function renderChangelog(entries) {
+  const root = $('#changelogList');
+  if (!entries?.length) {
+    root.innerHTML = '<p class="form-hint">没有找到版本记录。</p>';
+    return;
+  }
+  root.innerHTML = entries.map((entry, index) => `
+    <details class="changelog-entry" ${index === 0 ? 'open' : ''}>
+      <summary>v${escapeHtml(entry.version)}<span>${escapeHtml(entry.date || '')}</span></summary>
+      <div class="changelog-body">
+        ${entry.sections.map((section) => `<div class="changelog-section"><b>${escapeHtml(section.title)}</b><ul>${section.items.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul></div>`).join('')}
+      </div>
+    </details>`).join('');
+}
+
+function renderUpdateCheck(state, error = '') {
+  const result = $('#updateResult');
+  const badge = $('#updateBadge');
+  badge.classList.remove('available', 'error', 'pending');
+  if (error) {
+    badge.textContent = '检查失败';
+    badge.classList.add('error');
+    result.className = 'update-result error';
+    result.innerHTML = `<div class="update-result-head"><b>无法检查更新</b><span>${escapeHtml(state?.checkedAt || '')}</span></div><p>${escapeHtml(error)}</p>`;
+    result.hidden = false;
+    $('#versionButton').classList.remove('has-update');
+    return;
+  }
+  if (!state?.checkedAt) {
+    badge.textContent = '尚未检查';
+    badge.classList.add('pending');
+    result.hidden = true;
+    return;
+  }
+  if (state.updateAvailable) {
+    badge.textContent = '发现新版本';
+    badge.classList.add('available');
+    $('#versionButton').classList.add('has-update');
+  } else {
+    badge.textContent = '已是最新';
+    $('#versionButton').classList.remove('has-update');
+  }
+  result.className = `update-result${state.updateAvailable ? ' available' : ''}`;
+  result.innerHTML = `
+    <div class="update-result-head"><b>${state.updateAvailable ? `可更新到 v${escapeHtml(state.latestVersion)}` : '当前已是最新版本'}</b><span>${escapeHtml(state.checkedAt || '')}</span></div>
+    <p>当前版本 v${escapeHtml(state.currentVersion || state.currentVersion || '')} · 最新版本 v${escapeHtml(state.latestVersion || '')}${state.releasedAt ? ` · ${escapeHtml(state.releasedAt)}` : ''}</p>
+    ${state.notes?.length ? `<ul>${state.notes.map((note) => `<li>${escapeHtml(note)}</li>`).join('')}</ul>` : ''}
+    ${state.releaseUrl && safeExternalUrl(state.releaseUrl) ? `<p style="margin-top:8px"><a href="${escapeHtml(state.releaseUrl)}" target="_blank" rel="noopener noreferrer">查看发布页面</a></p>` : ''}`;
+  result.hidden = false;
+}
+
+async function loadUpdateCenter(forceCheck = false) {
+  if (!isAdmin()) return;
+  $('#updateCurrentHint').textContent = '正在读取版本信息…';
+  try {
+    const info = await api('/api/update');
+    state.updateInfo = info;
+    $('#updateCurrentVersion').textContent = info.currentVersion;
+    $('#updateCurrentHint').textContent = `${info.deployment?.label || ''} · 数据目录 ${info.deployment?.dataDir || ''}`;
+    $('#updateFeedHint').textContent = info.feed?.configured
+      ? `更新源：${info.feed.urlHost || '已配置'}${info.feed.tokenConfigured ? ' · 已启用访问令牌' : ''}`
+      : '尚未配置更新源。设置 UPDATE_FEED_URL 后可在界面中检查新版本。';
+    renderUpdateMeta(info);
+    renderChangelog(info.changelog);
+    renderUpdateCheck(info.lastCheck, info.lastCheck?.error || '');
+    if (forceCheck && info.feed?.configured) await checkForUpdate();
+  } catch (err) {
+    $('#updateCurrentHint').textContent = '无法读取版本信息';
+    $('#updateResult').hidden = false;
+    $('#updateResult').className = 'update-result error';
+    $('#updateResult').innerHTML = `<p>${escapeHtml(err.message)}</p>`;
+  }
+}
+
+async function checkForUpdate() {
+  const button = $('#checkUpdateButton');
+  const hint = $('#updateFeedHint');
+  button.disabled = true;
+  const original = button.textContent;
+  button.textContent = '检查中…';
+  hint.textContent = '正在连接更新源…';
+  try {
+    const result = await api('/api/update/check', { method: 'POST' });
+    renderUpdateCheck({ ...result, checkedAt: result.checkedAt || new Date().toISOString() });
+    hint.textContent = result.updateAvailable ? `发现新版本 v${result.latestVersion}` : '当前版本已是最新';
+  } catch (err) {
+    const last = err.payload?.lastCheck || {};
+    renderUpdateCheck({ ...last, currentVersion: last.currentVersion || state.updateInfo?.currentVersion }, err.message);
+    hint.textContent = '更新检查失败，请确认更新源配置。';
+  } finally {
+    button.disabled = false;
+    button.textContent = original;
+  }
+}
+
+async function copyUpdateCommands() {
+  const text = $('#updateCommands').textContent;
+  try {
+    await navigator.clipboard.writeText(text);
+    toast('更新命令已复制');
+  } catch {
+    const area = document.createElement('textarea');
+    area.value = text;
+    document.body.append(area);
+    area.select();
+    document.execCommand('copy');
+    area.remove();
+    toast('更新命令已复制');
+  }
+}
+
+function openUpdateCenter() {
+  if (!isAdmin()) return;
+  fillSettingsForm();
+  openDialog('settingsDialog');
+  selectSettingsTab('update');
+}
+
 function fillSettingsForm() {
   const form = $('#settingsForm');
   form.reset();
@@ -1164,6 +1435,7 @@ function selectSettingsTab(name) {
   $$('[data-settings-tab]').forEach((button) => button.classList.toggle('active', button.dataset.settingsTab === name));
   $$('[data-settings-panel]').forEach((panel) => panel.classList.toggle('active', panel.dataset.settingsPanel === name));
   if (name === 'users') loadUsers();
+  if (name === 'update') loadUpdateCenter();
 }
 
 async function handleSettingsSubmit(event) {
@@ -1378,6 +1650,10 @@ function bindEvents() {
   $('#addItemButton').addEventListener('click', () => openItemDialog());
   $('#emptyAddButton').addEventListener('click', () => openItemDialog());
   $('#addGroupButton').addEventListener('click', () => openGroupDialog());
+  $('#versionButton').addEventListener('click', openUpdateCenter);
+  $('#checkUpdateButton').addEventListener('click', checkForUpdate);
+  $('#updateBackupButton').addEventListener('click', exportBackup);
+  $('#copyUpdateCommands').addEventListener('click', copyUpdateCommands);
   $('#manageGroupsButton').addEventListener('click', openGroupsManager);
   $('#importBookmarksButton').addEventListener('click', openBookmarkImport);
   $('#managerImportBookmarksButton').addEventListener('click', openBookmarkImport);
@@ -1665,6 +1941,7 @@ async function init() {
 }
 
 init();
+
 
 
 

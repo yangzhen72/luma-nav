@@ -9,6 +9,9 @@ services:
       TZ: Asia/Shanghai
       SESSION_SECRET: change-this-to-a-random-long-string
       ADMIN_PASSWORD: change-me-before-first-run
+      UPDATE_FEED_URL: ""
+      UPDATE_FEED_TOKEN: ""
     volumes:
       - ./data:/app/data
       - ./uploads:/app/uploads
+

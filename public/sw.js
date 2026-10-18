@@ -1,6 +1,6 @@
 'use strict';
 
-const CACHE = 'luma-nav-v7';
+const CACHE = 'luma-nav-v10';
 const SHELL = ['/', '/index.html', '/styles.css', '/app.js', '/favicon.svg', '/manifest.webmanifest'];
 
 self.addEventListener('install', (event) => {
@@ -30,6 +30,9 @@ self.addEventListener('fetch', (event) => {
     return response;
   }).catch(() => caches.match(event.request)));
 });
+
+
+
 
 
 
