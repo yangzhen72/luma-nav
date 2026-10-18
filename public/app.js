@@ -219,7 +219,7 @@ function updateChrome() {
   document.body.classList.toggle('edit-mode', state.editMode);
   document.body.classList.toggle('auth-locked', !currentUser);
   $('#authGate').hidden = currentUser;
-  const engine = ENGINES[settings.searchEngine] || ENGINES.bing;
+  const engine = settings.searchEngine === 'custom' ? { label: '自定义' } : (ENGINES[settings.searchEngine] || ENGINES.bing);
   $('#searchEngineLabel').textContent = engine.label;
   const date = new Date();
   $('#dateLabel').textContent = new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric', weekday: 'short' }).format(date);
@@ -1665,6 +1665,7 @@ async function init() {
 }
 
 init();
+
 
 
 
