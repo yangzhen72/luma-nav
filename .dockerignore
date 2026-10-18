@@ -1,0 +1,11 @@
+.git
+.gitignore
+data
+uploads
+node_modules
+*.log
+desktop.png
+docs
+test
+.env
+.session-secret

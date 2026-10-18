@@ -1,0 +1,13 @@
+{
+  "name": "Luma Nav · 个人数字入口",
+  "short_name": "Luma Nav",
+  "description": "自托管个人导航中心",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0e15",
+  "theme_color": "#0c1018",
+  "lang": "zh-CN",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

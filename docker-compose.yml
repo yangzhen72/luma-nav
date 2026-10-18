@@ -1,0 +1,14 @@
+services:
+  luma-nav:
+    build: .
+    container_name: luma-nav
+    restart: unless-stopped
+    ports:
+      - "3002:3002"
+    environment:
+      TZ: Asia/Shanghai
+      SESSION_SECRET: change-this-to-a-random-long-string
+      ADMIN_PASSWORD: change-me-before-first-run
+    volumes:
+      - ./data:/app/data
+      - ./uploads:/app/uploads
