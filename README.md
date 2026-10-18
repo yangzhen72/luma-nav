@@ -4,7 +4,7 @@
 
 ## 版本与更新日志
 
-当前版本：`0.6.0`。完整版本历史与每个版本的具体改动见 [CHANGELOG.md](CHANGELOG.md)。发布新版本时，必须同步更新版本号、前端静态资源版本和更新日志。
+当前版本：`0.6.1`。完整版本历史与每个版本的具体改动见 [CHANGELOG.md](CHANGELOG.md)。发布新版本时，必须同步更新版本号、前端静态资源版本和更新日志。
 
 ## 核心特性
 
@@ -117,10 +117,10 @@ npm test
 
 ### 配置更新源
 
-更新源可以是 JSON 清单或 Markdown 更新日志。推荐直接指向仓库中的 `CHANGELOG.md` raw 地址：
+更新源可以是 JSON 清单或 Markdown 更新日志。默认指向当前 GitLab 仓库的 `CHANGELOG.md`：
 
 ```env
-UPDATE_FEED_URL=https://gitlab.example.com/root/luma-nav/-/raw/main/CHANGELOG.md
+UPDATE_FEED_URL=https://gitlab.yangzheng.xin/root/luma-nav/-/raw/main/CHANGELOG.md
 UPDATE_FEED_TOKEN=
 ```
 
@@ -182,7 +182,7 @@ docker compose up -d --build
 | `ADMIN_PASSWORD` | `admin123` | 首次初始化管理员密码 |
 | `SESSION_SECRET` | 自动生成 | 会话令牌签名密钥 |
 | `COOKIE_SECURE` | 未设置 | HTTPS 部署时设为 `1` |
-| `UPDATE_FEED_URL` | 未设置 | 更新检查源，支持 Markdown 更新日志或 JSON 清单 |
+| `UPDATE_FEED_URL` | GitLab 仓库 CHANGELOG | 更新检查源，支持 Markdown 更新日志或 JSON 清单 |
 | `UPDATE_FEED_TOKEN` | 未设置 | 私有 GitLab 更新源访问令牌 |
 
 ## 数据结构
@@ -254,6 +254,7 @@ docker compose up -d --build
 ## License
 
 MIT
+
 
 
 

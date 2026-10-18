@@ -15,11 +15,11 @@ const DB_FILE = path.join(DATA_DIR, 'db.json');
 const SECRET_FILE = path.join(DATA_DIR, '.session-secret');
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 3002);
-const VERSION = '0.6.0';
+const VERSION = '0.6.1';
 const MAX_BODY = 2 * 1024 * 1024;
 const SESSION_MAX_AGE = 7 * 24 * 60 * 60;
 const COOKIE_SECURE = process.env.COOKIE_SECURE === '1';
-const UPDATE_FEED_URL = String(process.env.UPDATE_FEED_URL || '').trim();
+const UPDATE_FEED_URL = String(process.env.UPDATE_FEED_URL || 'https://gitlab.yangzheng.xin/root/luma-nav/-/raw/main/CHANGELOG.md').trim();
 const UPDATE_FEED_TOKEN = String(process.env.UPDATE_FEED_TOKEN || '').trim();
 const CHANGELOG_FILE = path.join(ROOT, 'CHANGELOG.md');
 
@@ -410,7 +410,18 @@ async function performUpdateCheck(force = false) {
   updateCheckPromise = (async () => {
     const headers = { Accept: 'application/json, text/markdown, text/plain;q=0.9, */*;q=0.1' };
     if (UPDATE_FEED_TOKEN) headers['PRIVATE-TOKEN'] = UPDATE_FEED_TOKEN;
-    const response = await fetch(feedUrl, { headers, signal: AbortSignal.timeout(8000), redirect: 'follow' });
+    let response;
+    try {
+      response = await fetch(feedUrl, { headers, signal: AbortSignal.timeout(8000), redirect: 'follow' });
+    } catch (error) {
+      const cause = error?.cause?.code || error?.cause?.message || '';
+      const detail = cause ? ` (${cause})` : '';
+      throw new Error(`无法连接更新源${detail}；请检查网络、TLS 证书或反向代理设置`);
+    }
+    if (response.status === 401 || response.status === 403) {
+      throw new Error('更新源拒绝访问；私有仓库请配置 UPDATE_FEED_TOKEN');
+    }
+    if (response.status === 404) throw new Error('更新源文件不存在，请检查 UPDATE_FEED_URL 路径和分支');
     if (!response.ok) throw new Error(`更新源请求失败 (HTTP ${response.status})`);
     const length = Number(response.headers.get('content-length') || 0);
     if (length > 512 * 1024) throw new Error('更新源内容超过 512KB');

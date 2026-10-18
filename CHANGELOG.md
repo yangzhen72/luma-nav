@@ -12,6 +12,18 @@
 
 暂无。
 
+## [0.6.1] - 2026-10-18
+
+### 变更
+
+- 将版本更新中心默认更新源配置为 `https://gitlab.yangzheng.xin/root/luma-nav/-/raw/main/CHANGELOG.md`。
+- Docker Compose 支持通过环境变量覆盖默认更新源。
+- `.env.example` 改为使用当前 GitLab 仓库地址。
+
+### 测试
+
+- 验证版本中心能够识别默认更新源，并保留管理员权限与错误提示流程。
+
 ## [0.6.0] - 2026-10-18
 
 ### 新增
