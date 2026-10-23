@@ -16,13 +16,15 @@ const DB_FILE = path.join(DATA_DIR, 'db.json');
 const SECRET_FILE = path.join(DATA_DIR, '.session-secret');
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 3002);
-const VERSION = '0.6.5';
+const VERSION = '0.6.6';
 const MAX_BODY = 2 * 1024 * 1024;
 const SESSION_MAX_AGE = 7 * 24 * 60 * 60;
 const COOKIE_SECURE = process.env.COOKIE_SECURE === '1';
 const UPDATE_FEED_URL = String(process.env.UPDATE_FEED_URL || 'https://api.github.com/repos/yangzhen72/luma-nav/contents/CHANGELOG.md?ref=main').trim();
 const UPDATE_GIT_REMOTE = String(process.env.UPDATE_GIT_REMOTE || 'https://github.com/yangzhen72/luma-nav.git').trim();
 const UPDATE_FEED_TOKEN = String(process.env.UPDATE_FEED_TOKEN || '').trim();
+const UPDATE_COMMAND = String(process.env.UPDATE_COMMAND || '').trim();
+const UPDATE_BACKUP_DIR = path.join(DATA_DIR, 'updates');
 const CHANGELOG_FILE = path.join(ROOT, 'CHANGELOG.md');
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -332,6 +334,50 @@ async function readChangelog() {
   }
 }
 
+function updateApplyInfo() {
+  const docker = isDockerRuntime();
+  const defaultCommand = !docker && fs.existsSync(path.join(ROOT, '.git')) ? 'git pull --ff-only' : '';
+  const enabled = Boolean(UPDATE_COMMAND || defaultCommand);
+  return {
+    enabled,
+    mode: docker ? 'docker' : 'node',
+    configured: Boolean(UPDATE_COMMAND),
+    usesDefaultGit: !UPDATE_COMMAND && Boolean(defaultCommand),
+    requiresRestart: true,
+    backupBeforeUpdate: true,
+    note: enabled
+      ? (docker ? '执行容器更新命令后需要重启容器。' : '执行更新命令后需要重启 Node.js 服务。')
+      : (docker ? 'Docker 部署需配置 UPDATE_COMMAND 才能从页面执行更新。' : '未配置更新命令，当前仅提供版本信息和升级步骤。')
+  };
+}
+
+function runUpdateCommand(command) {
+  if (process.platform === 'win32') {
+    return new Promise((resolve, reject) => {
+      execFile(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', command], { cwd: ROOT, timeout: 300000, maxBuffer: 1024 * 1024 }, (error, stdout, stderr) => {
+        if (error) {
+          const wrapped = new Error(String(stderr || stdout || error.message).trim() || '更新命令执行失败');
+          wrapped.output = String(stdout || '') + String(stderr || '');
+          reject(wrapped);
+          return;
+        }
+        resolve(String(stdout || ''));
+      });
+    });
+  }
+  return new Promise((resolve, reject) => {
+    execFile('/bin/sh', ['-c', command], { cwd: ROOT, timeout: 300000, maxBuffer: 1024 * 1024 }, (error, stdout, stderr) => {
+      if (error) {
+        const wrapped = new Error(String(stderr || stdout || error.message).trim() || '更新命令执行失败');
+        wrapped.output = String(stdout || '') + String(stderr || '');
+        reject(wrapped);
+        return;
+      }
+      resolve(String(stdout || ''));
+    });
+  });
+}
+
 function isDockerRuntime() {
   return process.env.DOCKER_CONTAINER === '1' || fs.existsSync('/.dockerenv');
 }
@@ -395,6 +441,7 @@ let updateCheckState = {
 };
 let updateCheckPromise = null;
 let updateCheckAt = 0;
+let lastUpdateApply = null;
 
 function runExecFile(command, args) {
   return new Promise((resolve, reject) => {
@@ -925,6 +972,8 @@ async function handleApi(req, res, url) {
         tokenConfigured: Boolean(UPDATE_FEED_TOKEN)
       },
       lastCheck: updateCheckState,
+      apply: updateApplyInfo(),
+      lastApply: lastUpdateApply,
       counts: {
         users: db.users.length,
         groups: db.groups.length,
@@ -945,6 +994,51 @@ async function handleApi(req, res, url) {
         currentVersion: VERSION,
         error: error.message,
         lastCheck: updateCheckState
+      }, 'application/json; charset=utf-8');
+    }
+  }
+
+  if (method === 'POST' && pathname === '/api/update/apply') {
+    const admin = requireAdmin(req, res);
+    if (!admin) return;
+    const body = await readJson(req);
+    if (body.confirm !== 'UPDATE') return fail(res, 400, '缺少更新确认');
+    const apply = updateApplyInfo();
+    if (!apply.enabled) return fail(res, 400, '未配置可执行的更新命令', 'UPDATE_DISABLED');
+    try {
+      const check = await performUpdateCheck(true);
+      if (!check.updateAvailable) {
+        return fail(res, 409, '当前已经是最新版本，无需更新', 'ALREADY_LATEST');
+      }
+      await fsp.mkdir(UPDATE_BACKUP_DIR, { recursive: true });
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const backupFile = path.join(UPDATE_BACKUP_DIR, 'pre-update-' + stamp + '.json');
+      await fsp.writeFile(backupFile, JSON.stringify({ app: 'luma-nav', exportedAt: isoNow(), data: db }, null, 2), { mode: 0o600 });
+      const command = UPDATE_COMMAND || (process.platform === 'win32' ? 'git pull --ff-only' : 'git pull --ff-only');
+      const output = await runUpdateCommand(command);
+      lastUpdateApply = {
+        at: isoNow(),
+        fromVersion: VERSION,
+        targetVersion: check.latestVersion,
+        backupFile: path.relative(ROOT, backupFile),
+        output: output.slice(-8000),
+        requiresRestart: true
+      };
+      return send(res, 200, {
+        ok: true,
+        updatedTo: check.latestVersion,
+        backupFile: path.relative(ROOT, backupFile),
+        output: output.slice(-8000),
+        requiresRestart: true,
+        message: '更新命令执行完成，请重启服务使新版本生效。'
+      });
+    } catch (error) {
+      lastUpdateApply = { at: isoNow(), error: error.message, output: String(error.output || '').slice(-8000), requiresRestart: false };
+      return send(res, 500, {
+        ok: false,
+        error: error.message,
+        output: String(error.output || '').slice(-8000),
+        lastApply: lastUpdateApply
       }, 'application/json; charset=utf-8');
     }
   }

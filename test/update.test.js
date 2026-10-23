@@ -64,7 +64,8 @@ before(async () => {
       UPLOAD_DIR: path.join(tempDir, 'uploads'),
       SESSION_SECRET: 'update-test-secret',
       ADMIN_PASSWORD: 'updatepass123',
-      UPDATE_FEED_URL: `http://127.0.0.1:${feedPort}/CHANGELOG.md`
+      UPDATE_FEED_URL: `http://127.0.0.1:${feedPort}/CHANGELOG.md`,
+      UPDATE_COMMAND: 'echo update-test-ok'
     },
     stdio: ['ignore', 'pipe', 'pipe']
   });
@@ -131,4 +132,12 @@ test('version center checks configured update feed', async () => {
   const afterCheck = await admin('/api/update');
   assert.equal(afterCheck.body.lastCheck.latestVersion, '9.9.9');
   assert.equal(afterCheck.body.lastCheck.updateAvailable, true);
+
+  const applied = await admin('/api/update/apply', { method: 'POST', body: { confirm: 'UPDATE' } });
+  assert.equal(applied.status, 200);
+  assert.equal(applied.body.ok, true);
+  assert.match(applied.body.output, /update-test-ok/);
+  assert.equal(applied.body.requiresRestart, true);
+  assert.ok(applied.body.backupFile.includes('updates'));
+  assert.ok(applied.body.backupFile.includes('pre-update-'));
 });

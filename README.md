@@ -4,7 +4,7 @@
 
 ## 版本与更新日志
 
-当前版本：`0.6.5`。完整版本历史与每个版本的具体改动见 [CHANGELOG.md](CHANGELOG.md)。发布新版本时，必须同步更新版本号、前端静态资源版本和更新日志。
+当前版本：`0.6.6`。完整版本历史与每个版本的具体改动见 [CHANGELOG.md](CHANGELOG.md)。发布新版本时，必须同步更新版本号、前端静态资源版本和更新日志。
 
 ## 核心特性
 
@@ -122,6 +122,7 @@ npm test
 UPDATE_FEED_URL=https://api.github.com/repos/yangzhen72/luma-nav/contents/CHANGELOG.md?ref=main
 UPDATE_GIT_REMOTE=https://github.com/yangzhen72/luma-nav.git
 UPDATE_FEED_TOKEN=
+UPDATE_COMMAND=
 ```
 
 私有 GitLab 仓库可通过 `UPDATE_FEED_TOKEN` 设置只读访问令牌。令牌仅保存在服务端，不会返回给浏览器。
@@ -154,7 +155,21 @@ docker compose pull
 docker compose up -d
 ```
 
-更新前可在版本中心点击“更新前备份”。版本中心不会在运行中自动覆盖程序文件，避免更新中断导致服务不可用。
+更新前可在版本中心点击“更新前备份”。管理员也可以点击“更新版本”手动执行已配置的更新命令；系统会先自动备份数据库，更新完成后仍需重启服务。
+
+Node.js 直接运行且目录中存在 `.git` 时，默认执行：
+
+```bash
+git pull --ff-only
+```
+
+Docker 部署需显式配置 `UPDATE_COMMAND`，例如挂载到容器内的宿主机升级脚本：
+
+```env
+UPDATE_COMMAND=/opt/update-scripts/luma-nav-update.sh
+```
+
+未配置 `UPDATE_COMMAND` 时，版本中心只展示版本信息和命令，不会执行自动更新。
 
 ## Docker 部署
 
@@ -184,6 +199,7 @@ docker compose up -d --build
 | `COOKIE_SECURE` | 未设置 | HTTPS 部署时设为 `1` |
 | `UPDATE_FEED_URL` | GitHub CHANGELOG API | 更新检查源，支持 Markdown 更新日志或 JSON 清单 |
 | `UPDATE_GIT_REMOTE` | GitHub 仓库 | HTTP 检查失败时用于读取最新 Git 标签 |
+| `UPDATE_COMMAND` | 未设置 | 管理员手动更新时执行的部署命令，超时 5 分钟 |
 | `UPDATE_FEED_TOKEN` | 未设置 | 私有 GitLab 更新源访问令牌 |
 
 ## 数据结构
@@ -254,6 +270,7 @@ docker compose up -d --build
 ## License
 
 MIT
+
 
 
 

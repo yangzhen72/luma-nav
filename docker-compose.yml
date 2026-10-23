@@ -11,7 +11,8 @@ services:
       ADMIN_PASSWORD: change-me-before-first-run
       UPDATE_FEED_URL: ${UPDATE_FEED_URL:-https://api.github.com/repos/yangzhen72/luma-nav/contents/CHANGELOG.md?ref=main}
       UPDATE_GIT_REMOTE: ${UPDATE_GIT_REMOTE:-https://github.com/yangzhen72/luma-nav.git}
-      UPDATE_FEED_TOKEN: ""
+      UPDATE_FEED_TOKEN: ${UPDATE_FEED_TOKEN:-}
+      UPDATE_COMMAND: ${UPDATE_COMMAND:-}
     volumes:
       - ./data:/app/data
       - ./uploads:/app/uploads

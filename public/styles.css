@@ -891,3 +891,17 @@ body.auth-locked .auth-gate { display: grid !important; }
 
 .sidebar-version:disabled { cursor: default; opacity: .62; }
 .sidebar-version:disabled:hover { color: var(--text-dim); background: transparent; }
+
+.update-output {
+  margin: 10px 0 0;
+  padding: 9px;
+  max-height: 180px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text-soft);
+  font: 9px/1.55 var(--mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

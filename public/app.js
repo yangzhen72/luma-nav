@@ -1252,12 +1252,14 @@ function renderUpdateCheck(state, error = '') {
     result.innerHTML = `<div class="update-result-head"><b>无法检查更新</b><span>${escapeHtml(state?.checkedAt || '')}</span></div><p>${escapeHtml(error)}</p>`;
     result.hidden = false;
     $('#versionButton').classList.remove('has-update');
+    $('#applyUpdateButton').hidden = true;
     return;
   }
   if (!state?.checkedAt) {
     badge.textContent = '尚未检查';
     badge.classList.add('pending');
     result.hidden = true;
+    $('#applyUpdateButton').hidden = true;
     return;
   }
   if (state.updateAvailable) {
@@ -1275,6 +1277,11 @@ function renderUpdateCheck(state, error = '') {
     ${state.notes?.length ? `<ul>${state.notes.map((note) => `<li>${escapeHtml(note)}</li>`).join('')}</ul>` : ''}
     ${state.releaseUrl && safeExternalUrl(state.releaseUrl) ? `<p style="margin-top:8px"><a href="${escapeHtml(state.releaseUrl)}" target="_blank" rel="noopener noreferrer">查看发布页面</a></p>` : ''}`;
   result.hidden = false;
+  const applyButton = $('#applyUpdateButton');
+  const applyInfo = state.updateInfo?.apply;
+  applyButton.hidden = !applyInfo?.enabled;
+  applyButton.disabled = !state.updateAvailable;
+  applyButton.title = applyInfo?.note || '';
 }
 
 async function loadUpdateCenter(forceCheck = false) {
@@ -1291,6 +1298,10 @@ async function loadUpdateCenter(forceCheck = false) {
     renderUpdateMeta(info);
     renderChangelog(info.changelog);
     renderUpdateCheck(info.lastCheck, info.lastCheck?.error || '');
+    const applyButton = $('#applyUpdateButton');
+    applyButton.hidden = !info.apply?.enabled;
+    applyButton.disabled = !info.lastCheck?.updateAvailable;
+    applyButton.title = info.apply?.note || '';
     if (forceCheck && info.feed?.configured) await checkForUpdate();
   } catch (err) {
     $('#updateCurrentHint').textContent = '无法读取版本信息';
@@ -1318,6 +1329,36 @@ async function checkForUpdate() {
   } finally {
     button.disabled = false;
     button.textContent = original;
+  }
+}
+
+async function handleApplyUpdate() {
+  const applyInfo = state.updateInfo?.apply;
+  if (!applyInfo?.enabled) {
+    toast(applyInfo?.note || '当前部署未配置可执行的更新命令', 'error');
+    return;
+  }
+  const confirmed = await confirmAction('执行版本更新', '将先自动备份当前数据，再执行服务器配置的更新命令。更新完成后需要重启服务，确定继续吗？');
+  if (!confirmed) return;
+  const button = $('#applyUpdateButton');
+  const result = $('#updateResult');
+  button.disabled = true;
+  button.textContent = '更新中…';
+  result.className = 'update-result';
+  result.innerHTML = '<div class="update-result-head"><b>正在执行更新</b><span>请勿关闭当前页面</span></div><p>正在备份并运行更新命令，这可能需要几分钟。</p>';
+  result.hidden = false;
+  try {
+    const data = await api('/api/update/apply', { method: 'POST', body: { confirm: 'UPDATE' } });
+    result.className = 'update-result available';
+    result.innerHTML = `<div class="update-result-head"><b>更新命令已完成</b><span>${escapeHtml(data.updatedTo || '')}</span></div><p>${escapeHtml(data.message || '请重启服务使更新生效。')}</p><p>备份文件：${escapeHtml(data.backupFile || '已创建')}</p>${data.output ? `<pre class="update-output">${escapeHtml(data.output)}</pre>` : ''}`;
+    toast('更新命令执行完成，请重启服务');
+  } catch (err) {
+    result.className = 'update-result error';
+    result.innerHTML = `<div class="update-result-head"><b>更新失败</b><span>${escapeHtml(err.payload?.lastApply?.at || '')}</span></div><p>${escapeHtml(err.message)}</p>${err.payload?.output ? `<pre class="update-output">${escapeHtml(err.payload.output)}</pre>` : ''}`;
+    toast('更新失败，请查看执行输出', 'error');
+  } finally {
+    button.disabled = false;
+    button.textContent = '更新版本';
   }
 }
 
@@ -1584,6 +1625,7 @@ function bindEvents() {
   $('#versionButton').addEventListener('click', openUpdateCenter);
   $('#checkUpdateButton').addEventListener('click', checkForUpdate);
   $('#updateBackupButton').addEventListener('click', exportBackup);
+  $('#applyUpdateButton').addEventListener('click', handleApplyUpdate);
   $('#copyUpdateCommands').addEventListener('click', copyUpdateCommands);
   $('#manageGroupsButton').addEventListener('click', openGroupsManager);
   $('#importBookmarksButton').addEventListener('click', openBookmarkImport);
