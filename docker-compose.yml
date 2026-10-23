@@ -9,7 +9,8 @@ services:
       TZ: Asia/Shanghai
       SESSION_SECRET: change-this-to-a-random-long-string
       ADMIN_PASSWORD: change-me-before-first-run
-      UPDATE_FEED_URL: ${UPDATE_FEED_URL:-https://gitlab.yangzheng.xin/root/luma-nav/-/raw/main/CHANGELOG.md}
+      UPDATE_FEED_URL: ${UPDATE_FEED_URL:-https://api.github.com/repos/yangzhen72/luma-nav/contents/CHANGELOG.md?ref=main}
+      UPDATE_GIT_REMOTE: ${UPDATE_GIT_REMOTE:-https://github.com/yangzhen72/luma-nav.git}
       UPDATE_FEED_TOKEN: ""
     volumes:
       - ./data:/app/data

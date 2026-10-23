@@ -6,6 +6,7 @@ const fsp = require('node:fs/promises');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const os = require('node:os');
+const { execFile } = require('node:child_process');
 
 const ROOT = __dirname;
 const PUBLIC_DIR = path.join(ROOT, 'public');
@@ -15,11 +16,12 @@ const DB_FILE = path.join(DATA_DIR, 'db.json');
 const SECRET_FILE = path.join(DATA_DIR, '.session-secret');
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 3002);
-const VERSION = '0.6.2';
+const VERSION = '0.6.3';
 const MAX_BODY = 2 * 1024 * 1024;
 const SESSION_MAX_AGE = 7 * 24 * 60 * 60;
 const COOKIE_SECURE = process.env.COOKIE_SECURE === '1';
-const UPDATE_FEED_URL = String(process.env.UPDATE_FEED_URL || 'https://gitlab.yangzheng.xin/root/luma-nav/-/raw/main/CHANGELOG.md').trim();
+const UPDATE_FEED_URL = String(process.env.UPDATE_FEED_URL || 'https://api.github.com/repos/yangzhen72/luma-nav/contents/CHANGELOG.md?ref=main').trim();
+const UPDATE_GIT_REMOTE = String(process.env.UPDATE_GIT_REMOTE || 'https://github.com/yangzhen72/luma-nav.git').trim();
 const UPDATE_FEED_TOKEN = String(process.env.UPDATE_FEED_TOKEN || '').trim();
 const CHANGELOG_FILE = path.join(ROOT, 'CHANGELOG.md');
 
@@ -396,8 +398,21 @@ let updateCheckState = {
 let updateCheckPromise = null;
 let updateCheckAt = 0;
 
-async function performUpdateCheck(force = false) {
-  if (!UPDATE_FEED_URL) throw new Error('尚未配置更新源，请设置 UPDATE_FEED_URL');
+function runExecFile(command, args) {
+  return new Promise((resolve, reject) => {
+    execFile(command, args, { timeout: 10000, maxBuffer: 1024 * 1024 }, (error, stdout, stderr) => {
+      if (error) {
+        const message = String(stderr || error.message || '').trim();
+        reject(new Error(message || '命令执行失败'));
+        return;
+      }
+      resolve(String(stdout || ''));
+    });
+  });
+}
+
+async function checkHttpUpdateFeed() {
+  if (!UPDATE_FEED_URL) throw new Error('尚未配置 HTTP 更新源');
   let feedUrl;
   try {
     feedUrl = new URL(UPDATE_FEED_URL);
@@ -405,41 +420,84 @@ async function performUpdateCheck(force = false) {
     throw new Error('UPDATE_FEED_URL 不是有效地址');
   }
   if (feedUrl.protocol !== 'https:' && feedUrl.protocol !== 'http:') throw new Error('更新源只支持 HTTP/HTTPS');
+  const headers = { Accept: 'application/vnd.github.raw+json, application/json, text/markdown, text/plain;q=0.9, */*;q=0.1', 'User-Agent': 'luma-nav' };
+  if (UPDATE_FEED_TOKEN) headers['PRIVATE-TOKEN'] = UPDATE_FEED_TOKEN;
+  let response;
+  try {
+    response = await fetch(feedUrl, { headers, signal: AbortSignal.timeout(8000), redirect: 'follow' });
+  } catch (error) {
+    const cause = error?.cause?.code || error?.cause?.message || '';
+    const detail = cause ? ' (' + cause + ')' : '';
+    throw new Error('无法连接更新源' + detail + '；请检查网络、TLS 证书或反向代理设置');
+  }
+  if (response.status === 401 || response.status === 403) {
+    throw new Error('更新源拒绝访问；私有仓库请配置 UPDATE_FEED_TOKEN');
+  }
+  if (response.status === 404) throw new Error('更新源文件不存在，请检查 UPDATE_FEED_URL 路径和分支');
+  if (!response.ok) throw new Error('更新源请求失败 (HTTP ' + response.status + ')');
+  const length = Number(response.headers.get('content-length') || 0);
+  if (length > 512 * 1024) throw new Error('更新源内容超过 512KB');
+  const text = await response.text();
+  if (text.length > 512 * 1024) throw new Error('更新源内容超过 512KB');
+  const release = parseUpdateFeed(text, feedUrl.toString());
+  return {
+    checkedAt: isoNow(),
+    latestVersion: release.version,
+    updateAvailable: compareVersions(release.version, VERSION) > 0,
+    releaseUrl: release.releaseUrl || feedUrl.toString(),
+    notes: release.notes.slice(0, 30),
+    releasedAt: release.releasedAt,
+    source: 'http',
+    error: ''
+  };
+}
+
+async function checkGitUpdateFeed() {
+  if (!UPDATE_GIT_REMOTE) throw new Error('尚未配置 Git 更新源');
+  const output = await runExecFile('git', ['ls-remote', '--tags', '--refs', UPDATE_GIT_REMOTE, 'v*']);
+  const versions = output.split(/\r?\n/)
+    .map((line) => line.split('\t')[1] || '')
+    .map((ref) => ref.replace(/^refs\/tags\//, ''))
+    .filter((version) => parseVersion(version));
+  if (!versions.length) throw new Error('Git 更新源没有找到版本标签');
+  versions.sort((left, right) => compareVersions(right, left));
+  const latestVersion = versions[0].replace(/^v/i, '');
+  const changelog = await readChangelog();
+  const entry = changelog.find((item) => item.version === latestVersion);
+  return {
+    checkedAt: isoNow(),
+    latestVersion,
+    updateAvailable: compareVersions(latestVersion, VERSION) > 0,
+    releaseUrl: 'https://github.com/yangzhen72/luma-nav/releases/tag/v' + latestVersion,
+    notes: entry ? entry.sections.flatMap((section) => section.items).slice(0, 30) : [],
+    releasedAt: entry?.date || '',
+    source: 'git',
+    error: ''
+  };
+}
+
+async function performUpdateCheck(force = false) {
   if (!force && updateCheckState.checkedAt && Date.now() - updateCheckAt < 5 * 60 * 1000) return updateCheckState;
   if (updateCheckPromise) return updateCheckPromise;
   updateCheckPromise = (async () => {
-    const headers = { Accept: 'application/json, text/markdown, text/plain;q=0.9, */*;q=0.1' };
-    if (UPDATE_FEED_TOKEN) headers['PRIVATE-TOKEN'] = UPDATE_FEED_TOKEN;
-    let response;
+    let httpError = null;
     try {
-      response = await fetch(feedUrl, { headers, signal: AbortSignal.timeout(8000), redirect: 'follow' });
+      updateCheckState = await checkHttpUpdateFeed();
+      updateCheckAt = Date.now();
+      return updateCheckState;
     } catch (error) {
-      const cause = error?.cause?.code || error?.cause?.message || '';
-      const detail = cause ? ` (${cause})` : '';
-      throw new Error(`无法连接更新源${detail}；请检查网络、TLS 证书或反向代理设置`);
+      httpError = error;
     }
-    if (response.status === 401 || response.status === 403) {
-      throw new Error('更新源拒绝访问；私有仓库请配置 UPDATE_FEED_TOKEN');
+    try {
+      updateCheckState = await checkGitUpdateFeed();
+      updateCheckAt = Date.now();
+      return updateCheckState;
+    } catch (gitError) {
+      const details = [];
+      if (httpError) details.push(httpError.message);
+      details.push(gitError.message);
+      throw new Error(details.join('；Git 回退也失败：'));
     }
-    if (response.status === 404) throw new Error('更新源文件不存在，请检查 UPDATE_FEED_URL 路径和分支');
-    if (!response.ok) throw new Error(`更新源请求失败 (HTTP ${response.status})`);
-    const length = Number(response.headers.get('content-length') || 0);
-    if (length > 512 * 1024) throw new Error('更新源内容超过 512KB');
-    const text = await response.text();
-    if (text.length > 512 * 1024) throw new Error('更新源内容超过 512KB');
-    const release = parseUpdateFeed(text, feedUrl.toString());
-    const latestVersion = release.version;
-    updateCheckState = {
-      checkedAt: isoNow(),
-      latestVersion,
-      updateAvailable: compareVersions(latestVersion, VERSION) > 0,
-      releaseUrl: release.releaseUrl || feedUrl.toString(),
-      notes: release.notes.slice(0, 30),
-      releasedAt: release.releasedAt,
-      error: ''
-    };
-    updateCheckAt = Date.now();
-    return updateCheckState;
   })().catch((error) => {
     updateCheckState = { ...updateCheckState, checkedAt: isoNow(), error: error.message };
     updateCheckAt = Date.now();

@@ -3,7 +3,7 @@ WORKDIR /app
 COPY package.json ./
 COPY server.js ./
 COPY public ./public
-RUN mkdir -p /app/data /app/uploads
+RUN apk add --no-cache git && mkdir -p /app/data /app/uploads
 ENV NODE_ENV=production PORT=3002
 EXPOSE 3002
 VOLUME ["/app/data", "/app/uploads"]
