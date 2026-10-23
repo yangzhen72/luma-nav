@@ -15,7 +15,7 @@ const DB_FILE = path.join(DATA_DIR, 'db.json');
 const SECRET_FILE = path.join(DATA_DIR, '.session-secret');
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 3002);
-const VERSION = '0.6.1';
+const VERSION = '0.6.2';
 const MAX_BODY = 2 * 1024 * 1024;
 const SESSION_MAX_AGE = 7 * 24 * 60 * 60;
 const COOKIE_SECURE = process.env.COOKIE_SECURE === '1';
@@ -1438,6 +1438,7 @@ function start() {
 if (require.main === module) start();
 
 module.exports = { start, requestHandler, hashPassword, verifyPassword, normalizeDatabase };
+
 
 
 

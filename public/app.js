@@ -203,7 +203,7 @@ function updateChrome() {
   $('#siteSubtitle').textContent = state.user
     ? `欢迎，${state.user.displayName || state.user.username}。这里是你独立维护的导航空间。`
     : '请登录后访问你的个人导航。';
-  $('#footerText').textContent = settings.footerText || 'Luma Nav · 自托管导航中心';
+  if ($('#footerText')) $('#footerText').textContent = settings.footerText || 'Luma Nav · 自托管导航中心';
   $('#versionLabel').textContent = state.version;
   $('#avatarText').textContent = (state.user?.displayName || state.user?.username || '访').charAt(0).toUpperCase();
   $('#loginButton').hidden = currentUser;
@@ -1414,7 +1414,7 @@ function fillSettingsForm() {
   const form = $('#settingsForm');
   form.reset();
   const settings = state.settings;
-  for (const name of ['siteName', 'siteSubtitle', 'greeting', 'footerText', 'searchEngine', 'customSearchUrl', 'themeDefault', 'wallpaper', 'accent', 'cardStyle']) {
+  for (const name of ['siteName', 'siteSubtitle', 'greeting', 'searchEngine', 'customSearchUrl', 'themeDefault', 'wallpaper', 'accent', 'cardStyle']) {
     const field = form.elements.namedItem(name);
     if (field && settings[name] !== undefined) field.value = settings[name];
   }
@@ -1449,7 +1449,6 @@ async function handleSettingsSubmit(event) {
     siteName: value('siteName'),
     siteSubtitle: value('siteSubtitle'),
     greeting: value('greeting'),
-    footerText: value('footerText'),
     searchEngine: value('searchEngine'),
     customSearchUrl: value('customSearchUrl'),
     themeDefault: value('themeDefault'),
@@ -1936,11 +1935,21 @@ async function init() {
     $('#groupsRoot').innerHTML = '<div class="empty-state"><div class="empty-mark">!</div><h2>无法加载导航数据</h2><p>请检查服务是否正常运行。</p></div>';
   }
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
-    navigator.serviceWorker.register('/sw.js').catch(() => {});
+    const hadController = Boolean(navigator.serviceWorker.controller);
+    let refreshing = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!hadController || refreshing) return;
+      refreshing = true;
+      location.reload();
+    });
+    navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' })
+      .then((registration) => registration.update())
+      .catch(() => {});
   }
 }
 
 init();
+
 
 
 
