@@ -164,6 +164,20 @@ function applyAppearance(useStored = true) {
   if (meta) meta.content = document.body.dataset.theme === 'light' ? '#edf0f4' : '#0c1018';
 }
 
+function getAutoGreeting(date = new Date()) {
+  const hour = date.getHours();
+  if (hour >= 5 && hour < 9) return '早上好，欢迎回来';
+  if (hour >= 9 && hour < 12) return '上午好，欢迎回来';
+  if (hour >= 12 && hour < 14) return '中午好，欢迎回来';
+  if (hour >= 14 && hour < 18) return '下午好，欢迎回来';
+  if (hour >= 18 && hour < 23) return '晚上好，欢迎回来';
+  return '夜深了，注意休息';
+}
+
+function updateAutoGreeting() {
+  $('#greetingText').textContent = getAutoGreeting(new Date());
+}
+
 function updateChrome() {
   const settings = state.settings;
   const admin = isAdmin();
@@ -171,7 +185,7 @@ function updateChrome() {
   const canEdit = canEditNavigation();
   document.title = `${settings.siteName || 'Luma Nav'} · ${settings.siteSubtitle || '个人数字入口'}`;
   $('#brandName').textContent = settings.siteName || 'Luma Nav';
-  $('#greetingText').textContent = settings.greeting || '欢迎回来';
+  updateAutoGreeting();
   $('#siteSubtitle').textContent = state.user
     ? `欢迎，${state.user.displayName || state.user.username}。这里是你独立维护的导航空间。`
     : '请登录后访问你的个人导航。';
@@ -311,6 +325,7 @@ function startClock() {
     $('#dateLabel').textContent = new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric', weekday: 'short' }).format(now);
     $('#clockLabel').textContent = new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false }).format(now);
     $('#clockLabel').hidden = !state.settings.showClock;
+    updateAutoGreeting();
   };
   tick();
   state.clockTimer = setInterval(tick, 15000);
@@ -1333,7 +1348,7 @@ function fillSettingsForm() {
   const form = $('#settingsForm');
   form.reset();
   const settings = state.settings;
-  for (const name of ['siteName', 'siteSubtitle', 'greeting', 'searchEngine', 'customSearchUrl', 'themeDefault', 'wallpaper', 'accent', 'cardStyle']) {
+  for (const name of ['siteName', 'siteSubtitle', 'searchEngine', 'customSearchUrl', 'themeDefault', 'wallpaper', 'accent', 'cardStyle']) {
     const field = form.elements.namedItem(name);
     if (field && settings[name] !== undefined) field.value = settings[name];
   }
@@ -1367,7 +1382,6 @@ async function handleSettingsSubmit(event) {
   const body = {
     siteName: value('siteName'),
     siteSubtitle: value('siteSubtitle'),
-    greeting: value('greeting'),
     searchEngine: value('searchEngine'),
     customSearchUrl: value('customSearchUrl'),
     themeDefault: value('themeDefault'),

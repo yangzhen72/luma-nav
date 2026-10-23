@@ -92,7 +92,6 @@ test('system settings, backup export and restore', async () => {
     body: {
       siteName: 'Settings Verify',
       siteSubtitle: 'Verification Subtitle',
-      greeting: 'Verification Greeting',
       footerText: 'Verification Footer',
       searchEngine: 'custom',
       customSearchUrl: 'https://search.example.com/find?q={q}',
@@ -111,7 +110,6 @@ test('system settings, backup export and restore', async () => {
   const bootstrap = await admin('/api/bootstrap');
   assert.equal(bootstrap.body.settings.siteName, 'Settings Verify');
   assert.equal(bootstrap.body.settings.siteSubtitle, 'Verification Subtitle');
-  assert.equal(bootstrap.body.settings.greeting, 'Verification Greeting');
   assert.equal(bootstrap.body.settings.footerText, 'Verification Footer');
   assert.equal(bootstrap.body.settings.searchEngine, 'custom');
   assert.equal(bootstrap.body.settings.customSearchUrl, 'https://search.example.com/find?q={q}');

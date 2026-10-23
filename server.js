@@ -16,7 +16,7 @@ const DB_FILE = path.join(DATA_DIR, 'db.json');
 const SECRET_FILE = path.join(DATA_DIR, '.session-secret');
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 3002);
-const VERSION = '0.6.4';
+const VERSION = '0.6.5';
 const MAX_BODY = 2 * 1024 * 1024;
 const SESSION_MAX_AGE = 7 * 24 * 60 * 60;
 const COOKIE_SECURE = process.env.COOKIE_SECURE === '1';
@@ -80,7 +80,6 @@ function verifyPassword(password, user) {
 const DEFAULT_SETTINGS = {
   siteName: 'Luma Nav',
   siteSubtitle: '个人数字入口',
-  greeting: '晚上好，欢迎回来',
   footerText: 'Luma Nav · 自托管导航中心',
   searchEngine: 'bing',
   customSearchUrl: 'https://www.google.com/search?q={q}',
@@ -144,7 +143,7 @@ function normalizeDatabase(input) {
 
   const rawSettings = input.settings && typeof input.settings === 'object' ? input.settings : {};
   const settings = { ...DEFAULT_SETTINGS };
-  for (const [key, max] of Object.entries({ siteName: 40, siteSubtitle: 80, greeting: 80, footerText: 120 })) {
+  for (const [key, max] of Object.entries({ siteName: 40, siteSubtitle: 80, footerText: 120 })) {
     if (rawSettings[key] !== undefined) settings[key] = cleanString(rawSettings[key], max);
   }
   for (const key of ['showClock', 'requireLogin', 'startInLanMode', 'openInNewTab']) {
@@ -1012,7 +1011,7 @@ async function handleApi(req, res, url) {
     if (!user) return;
     const body = await readJson(req);
     const next = { ...db.settings };
-    const stringFields = { siteName: 40, siteSubtitle: 80, greeting: 80, footerText: 120 };
+    const stringFields = { siteName: 40, siteSubtitle: 80, footerText: 120 };
     for (const [key, max] of Object.entries(stringFields)) {
       if (body[key] !== undefined) next[key] = cleanString(body[key], max);
     }
