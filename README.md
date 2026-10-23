@@ -4,7 +4,7 @@
 
 ## 版本与更新日志
 
-当前版本：`0.6.1`。完整版本历史与每个版本的具体改动见 [CHANGELOG.md](CHANGELOG.md)。发布新版本时，必须同步更新版本号、前端静态资源版本和更新日志。
+当前版本：`0.6.4`。完整版本历史与每个版本的具体改动见 [CHANGELOG.md](CHANGELOG.md)。发布新版本时，必须同步更新版本号、前端静态资源版本和更新日志。
 
 ## 核心特性
 
@@ -18,7 +18,6 @@
 - **搜索**：入口实时搜索，回退至 Bing、Google、百度、DuckDuckGo 或自定义搜索。
 - **图标**：文字、Emoji、图片 URL、本地图片上传。
 - **打开方式**：新标签页、当前窗口、页面内小窗口。
-- **系统概览**：CPU、内存、磁盘和运行时间。
 - **个性化**：深浅主题、6 套背景、7 种强调色、3 种卡片风格。
 - **备份恢复**：管理员可导出/恢复全部用户、导航和设置。
 - **版本与更新中心**：查看当前版本、运行环境、完整更新记录，并从 GitLab/GitHub 等更新源检查新版本，提供 Node/Docker 升级步骤。
@@ -214,7 +213,6 @@ docker compose up -d --build
 | `POST/PUT/DELETE` | `/api/groups...` | 登录用户，仅操作自己的分组 |
 | `POST/PUT/DELETE` | `/api/items...` | 登录用户，仅操作自己的入口 |
 | `PUT` | `/api/settings` | 管理员 |
-| `GET` | `/api/system` | 登录用户 |
 | `GET` | `/api/update` | 管理员，查看版本、更新日志和部署信息 |
 | `POST` | `/api/update/check` | 管理员，检查远程更新源 |
 | `POST` | `/api/import/navigation` | 登录用户，批量导入书签或 Sun-Panel 数据 |
@@ -256,6 +254,7 @@ docker compose up -d --build
 ## License
 
 MIT
+
 
 
 

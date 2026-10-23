@@ -16,7 +16,7 @@ const DB_FILE = path.join(DATA_DIR, 'db.json');
 const SECRET_FILE = path.join(DATA_DIR, '.session-secret');
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 3002);
-const VERSION = '0.6.3';
+const VERSION = '0.6.4';
 const MAX_BODY = 2 * 1024 * 1024;
 const SESSION_MAX_AGE = 7 * 24 * 60 * 60;
 const COOKIE_SECURE = process.env.COOKIE_SECURE === '1';
@@ -89,7 +89,6 @@ const DEFAULT_SETTINGS = {
   accent: 'amber',
   cardStyle: 'glass',
   showClock: true,
-  showSystem: true,
   requireLogin: true,
   startInLanMode: false,
   openInNewTab: true,
@@ -148,7 +147,7 @@ function normalizeDatabase(input) {
   for (const [key, max] of Object.entries({ siteName: 40, siteSubtitle: 80, greeting: 80, footerText: 120 })) {
     if (rawSettings[key] !== undefined) settings[key] = cleanString(rawSettings[key], max);
   }
-  for (const key of ['showClock', 'showSystem', 'requireLogin', 'startInLanMode', 'openInNewTab']) {
+  for (const key of ['showClock', 'requireLogin', 'startInLanMode', 'openInNewTab']) {
     if (rawSettings[key] !== undefined) settings[key] = Boolean(rawSettings[key]);
   }
   const choices = {
@@ -760,52 +759,6 @@ function adminCount() {
   return db.users.filter((user) => user.role === 'admin' && user.enabled !== false).length;
 }
 
-let previousCpu = sampleCpu();
-function sampleCpu() {
-  let idle = 0;
-  let total = 0;
-  for (const cpu of os.cpus()) {
-    for (const value of Object.values(cpu.times)) total += value;
-    idle += cpu.times.idle;
-  }
-  return { idle, total };
-}
-
-function cpuUsage() {
-  const current = sampleCpu();
-  const idleDelta = current.idle - previousCpu.idle;
-  const totalDelta = current.total - previousCpu.total;
-  previousCpu = current;
-  if (totalDelta <= 0) return 0;
-  return Math.max(0, Math.min(100, (1 - idleDelta / totalDelta) * 100));
-}
-
-function systemMetrics() {
-  const totalMem = os.totalmem();
-  const freeMem = os.freemem();
-  let disk = null;
-  try {
-    const stat = fs.statfsSync(DATA_DIR);
-    const total = stat.blocks * stat.bsize;
-    const free = stat.bavail * stat.bsize;
-    disk = { total, free, used: total - free, percent: total ? ((total - free) / total) * 100 : 0 };
-  } catch {
-    disk = null;
-  }
-  return {
-    cpu: { percent: cpuUsage(), cores: os.cpus().length },
-    memory: { total: totalMem, free: freeMem, used: totalMem - freeMem, percent: totalMem ? ((totalMem - freeMem) / totalMem) * 100 : 0 },
-    disk,
-    load: os.loadavg(),
-    uptime: os.uptime(),
-    processUptime: process.uptime(),
-    hostname: os.hostname(),
-    platform: `${os.platform()} ${os.arch()}`,
-    node: process.version,
-    timestamp: isoNow()
-  };
-}
-
 function safeGroup(group) {
   return {
     id: group.id,
@@ -958,12 +911,6 @@ async function handleApi(req, res, url) {
     return send(res, 200, publicBootstrap(session?.user || null));
   }
 
-  if (method === 'GET' && pathname === '/api/system') {
-    const session = getSession(req);
-    if (!db.settings.showSystem && !session?.user) return fail(res, 403, '系统状态未公开');
-    return send(res, 200, { ok: true, metrics: systemMetrics() });
-  }
-
   if (method === 'GET' && pathname === '/api/update') {
     const admin = requireAdmin(req, res);
     if (!admin) return;
@@ -1069,7 +1016,7 @@ async function handleApi(req, res, url) {
     for (const [key, max] of Object.entries(stringFields)) {
       if (body[key] !== undefined) next[key] = cleanString(body[key], max);
     }
-    const boolFields = ['showClock', 'showSystem', 'requireLogin', 'startInLanMode', 'openInNewTab'];
+    const boolFields = ['showClock', 'requireLogin', 'startInLanMode', 'openInNewTab'];
     for (const key of boolFields) {
       if (body[key] !== undefined) next[key] = Boolean(body[key]);
     }

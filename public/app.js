@@ -40,7 +40,6 @@ const state = {
   lanMode: null,
   searchResults: [],
   searchIndex: -1,
-  metricsTimer: null,
   clockTimer: null,
   updateInfo: null,
   bookmarkImportGroups: [],
@@ -150,33 +149,6 @@ function iconMarkup(item) {
   if (iconUrl) return `<img src="${escapeHtml(iconUrl)}" alt="" loading="lazy" referrerpolicy="no-referrer">`;
   const fallback = (item.title || '?').trim().charAt(0).toUpperCase();
   return `<span>${escapeHtml(item.icon || fallback)}</span>`;
-}
-
-function formatBytes(bytes) {
-  if (!Number.isFinite(Number(bytes))) return '--';
-  const value = Number(bytes);
-  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-  let index = 0;
-  let current = value;
-  while (current >= 1024 && index < units.length - 1) {
-    current /= 1024;
-    index += 1;
-  }
-  return `${current >= 10 || index === 0 ? current.toFixed(0) : current.toFixed(1)} ${units[index]}`;
-}
-
-function formatDuration(seconds) {
-  const total = Math.max(0, Math.floor(Number(seconds) || 0));
-  const days = Math.floor(total / 86400);
-  const hours = Math.floor((total % 86400) / 3600);
-  const minutes = Math.floor((total % 3600) / 60);
-  if (days > 0) return `${days}天 ${hours}小时`;
-  if (hours > 0) return `${hours}小时 ${minutes}分`;
-  return `${minutes}分钟`;
-}
-
-function setBar(element, percent) {
-  if (element) element.style.width = `${Math.max(0, Math.min(100, Number(percent) || 0))}%`;
 }
 
 function applyAppearance(useStored = true) {
@@ -329,10 +301,7 @@ async function loadData(options = {}) {
   state.items = state.items.map((item, index) => ({ ...item, order: Number.isFinite(Number(item.order)) ? Number(item.order) : index }));
   for (const item of state.items) if (!counts.has(item.groupId)) item.groupId = state.groups[0]?.id || '';
   renderAll();
-  if (!options.silent) {
-    startMetrics();
-    startClock();
-  }
+  if (!options.silent) startClock();
 }
 
 function startClock() {
@@ -345,56 +314,6 @@ function startClock() {
   };
   tick();
   state.clockTimer = setInterval(tick, 15000);
-}
-
-function startMetrics() {
-  if (state.metricsTimer) clearInterval(state.metricsTimer);
-  state.metricsTimer = null;
-  const canView = Boolean(state.settings.showSystem || state.user);
-  $('#metrics').hidden = !canView;
-  $('#sidebarStatus').hidden = !canView;
-  if (!canView) return;
-  const refresh = () => loadMetrics();
-  refresh();
-  state.metricsTimer = setInterval(refresh, 12000);
-}
-
-async function loadMetrics() {
-  try {
-    const data = await api('/api/system');
-    const metrics = data.metrics;
-    if (!metrics) return;
-    const cpu = Math.round(metrics.cpu.percent * 10) / 10;
-    const memory = Math.round(metrics.memory.percent * 10) / 10;
-    $('#metricCpu').innerHTML = `${cpu}<small>%</small>`;
-    $('#metricMem').innerHTML = `${memory}<small>%</small>`;
-    $('#metricMemLabel').textContent = `${formatBytes(metrics.memory.used)} / ${formatBytes(metrics.memory.total)}`;
-    $('#metricUptime').textContent = formatDuration(metrics.uptime);
-    $('#metricHost').textContent = `${metrics.hostname} · ${metrics.platform}`;
-    setBar($('#metricCpuBar'), cpu);
-    setBar($('#metricMemBar'), memory);
-    if (metrics.disk) {
-      const disk = Math.round(metrics.disk.percent * 10) / 10;
-      $('#metricDisk').innerHTML = `${disk}<small>%</small>`;
-      $('#metricDiskLabel').textContent = `${formatBytes(metrics.disk.free)} 可用`;
-      setBar($('#metricDiskBar'), disk);
-    } else {
-      $('#metricDisk').textContent = '--';
-      $('#metricDiskLabel').textContent = '不可用';
-      setBar($('#metricDiskBar'), 0);
-    }
-    $('#sideCpu').textContent = `${cpu}%`;
-    $('#sideMem').textContent = `${memory}%`;
-    $('#sideUptime').textContent = formatDuration(metrics.uptime);
-    setBar($('#sideCpuBar'), cpu);
-    $('#metrics').hidden = false;
-    $('#sidebarStatus').hidden = false;
-  } catch {
-    if (!state.user) {
-      $('#metrics').hidden = true;
-      $('#sidebarStatus').hidden = true;
-    }
-  }
 }
 
 function normalized(value) {
@@ -1418,7 +1337,7 @@ function fillSettingsForm() {
     const field = form.elements.namedItem(name);
     if (field && settings[name] !== undefined) field.value = settings[name];
   }
-  for (const name of ['showClock', 'showSystem', 'startInLanMode', 'openInNewTab', 'requireLogin']) {
+  for (const name of ['showClock', 'startInLanMode', 'openInNewTab']) {
     const field = form.elements.namedItem(name);
     if (field) field.checked = Boolean(settings[name]);
   }
@@ -1456,7 +1375,6 @@ async function handleSettingsSubmit(event) {
     accent: value('accent'),
     cardStyle: value('cardStyle'),
     showClock: checked('showClock'),
-    showSystem: checked('showSystem'),
     startInLanMode: checked('startInLanMode'),
     openInNewTab: checked('openInNewTab'),
     requireLogin: true

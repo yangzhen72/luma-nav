@@ -101,7 +101,6 @@ test('system settings, backup export and restore', async () => {
       accent: 'cyan',
       cardStyle: 'glass',
       showClock: false,
-      showSystem: true,
       startInLanMode: true,
       openInNewTab: false,
       requireLogin: true
@@ -121,12 +120,11 @@ test('system settings, backup export and restore', async () => {
   assert.equal(bootstrap.body.settings.accent, 'cyan');
   assert.equal(bootstrap.body.settings.cardStyle, 'glass');
   assert.equal(bootstrap.body.settings.showClock, false);
-  assert.equal(bootstrap.body.settings.showSystem, true);
   assert.equal(bootstrap.body.settings.startInLanMode, true);
   assert.equal(bootstrap.body.settings.openInNewTab, false);
 
   const publicSystem = await guest('/api/system');
-  assert.equal(publicSystem.status, 200);
+  assert.equal(publicSystem.status, 404);
 
   const invalidSearch = await admin('/api/settings', { method: 'PUT', body: { customSearchUrl: 'https://search.example.com/find' } });
   assert.equal(invalidSearch.status, 400);
@@ -139,10 +137,8 @@ test('system settings, backup export and restore', async () => {
   assert.equal(backup.body.data.groups.length, 4);
   assert.equal(backup.body.data.items.length, 12);
 
-  const changedAgain = await admin('/api/settings', { method: 'PUT', body: { siteName: 'Will Be Replaced', showSystem: false } });
+  const changedAgain = await admin('/api/settings', { method: 'PUT', body: { siteName: 'Will Be Replaced' } });
   assert.equal(changedAgain.status, 200);
-  const lockedSystem = await guest('/api/system');
-  assert.equal(lockedSystem.status, 403);
 
   const restore = await admin('/api/restore', { method: 'POST', body: { confirm: 'RESTORE', data: backup.body } });
   assert.equal(restore.status, 200);
@@ -154,9 +150,8 @@ test('system settings, backup export and restore', async () => {
   assert.equal(relogin.status, 200);
   const restored = await admin('/api/bootstrap');
   assert.equal(restored.body.settings.siteName, 'Settings Verify');
-  assert.equal(restored.body.settings.showSystem, true);
   assert.equal(restored.body.groups.length, 4);
   assert.equal(restored.body.items.length, 12);
-  const restoredSystem = await guest('/api/system');
-  assert.equal(restoredSystem.status, 200);
+  const removedSystem = await guest('/api/system');
+  assert.equal(removedSystem.status, 404);
 });
